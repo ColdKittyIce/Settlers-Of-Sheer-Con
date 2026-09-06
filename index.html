@@ -1,0 +1,2992 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Landfall</title>
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; background: #0a2838; }
+  #root { height: 100%; }
+  #fb-error-banner {
+    display: none; position: fixed; top: 0; left: 0; right: 0; z-index: 9999;
+    background: #b33a2e; color: #fff; font-family: -apple-system, sans-serif;
+    font-size: 14px; padding: 10px 16px; text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<div id="fb-error-banner">
+  Firebase config is missing or invalid — edit the CONFIG section near the top of this file. See comments below.
+</div>
+<div id="root"></div>
+
+<!--
+  ============================================================
+  SETUP: paste your Firebase config below, then this file works.
+  1. Go to https://console.firebase.google.com -> Add project (free).
+  2. In your project: Build -> Realtime Database -> Create Database
+     -> start in "test mode" (fine for a friends game; you can lock
+     it down later, see the security rules note below).
+  3. Project settings (gear icon) -> General -> "Your apps" -> Add app -> Web (</>) .
+  4. Copy the firebaseConfig object it gives you and paste it below,
+     replacing the placeholder values.
+  ============================================================
+-->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getDatabase, ref, get, set, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
+
+  // ==== PASTE YOUR FIREBASE CONFIG HERE ====
+  const firebaseConfig = {
+    apiKey: "AIzaSyDfmxWgAVI_ZCzdDB3JDitLaIjkni0zuVA",
+    authDomain: "settler-of-sheer-con.firebaseapp.com",
+    databaseURL: "https://settler-of-sheer-con-default-rtdb.firebaseio.com",
+    projectId: "settler-of-sheer-con",
+    storageBucket: "settler-of-sheer-con.firebasestorage.app",
+    messagingSenderId: "714378733312",
+    appId: "1:714378733312:web:418e31221547506bad35e5",
+  };
+  // ==========================================
+
+  try {
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    window.__fb = { db, ref, get, set, onValue };
+  } catch (e) {
+    console.error("Firebase init failed:", e);
+    document.getElementById("fb-error-banner").style.display = "block";
+  }
+</script>
+
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef, useCallback } = React;
+
+/* ============================== CONSTANTS ============================== */
+
+const RES = ["wood", "brick", "sheep", "wheat", "ore"];
+const RES_LABEL = { wood: "Timber", brick: "Clay", sheep: "Wool", wheat: "Grain", ore: "Ore" };
+const RES_COLOR = { wood: "#3f5d3a", brick: "#af5a3a", sheep: "#8fae6b", wheat: "#d9a441", ore: "#5c6b74" };
+const RES_ICON = { wood: "🌲", brick: "🧱", sheep: "🐑", wheat: "🌾", ore: "⛰️" };
+
+const COSTS = {
+  road: { wood: 1, brick: 1 },
+  settlement: { wood: 1, brick: 1, wheat: 1, sheep: 1 },
+  city: { wheat: 2, ore: 3 },
+  dev: { wheat: 1, sheep: 1, ore: 1 },
+};
+
+const PLAYER_COLORS = ["#b5502d", "#2f4a3e", "#3a5a8a", "#8a6d1f", "#6b3f7a", "#4a4a4a"];
+const DEFAULT_OPTIONS = { winVp: 10, discardLimit: 7, friendlyRobber: false, turnTimerSec: 0 };
+const BANK_START = 19;
+const DEV_DECK = [
+  ...Array(14).fill("knight"),
+  ...Array(5).fill("vp"),
+  ...Array(2).fill("road_building"),
+  ...Array(2).fill("year_of_plenty"),
+  ...Array(2).fill("monopoly"),
+];
+const NUMBER_BASE = [2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11, 12];
+const DOTS = { 2: 1, 3: 2, 4: 3, 5: 4, 6: 5, 8: 5, 9: 4, 10: 3, 11: 2, 12: 1 };
+
+/* ============================== HELPERS ================================ */
+
+function uid(n = 6) {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let s = "";
+  for (let i = 0; i < n; i++) s += chars[Math.floor(Math.random() * chars.length)];
+  return s;
+}
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function emptyResources() {
+  return { wood: 0, brick: 0, sheep: 0, wheat: 0, ore: 0 };
+}
+function totalCards(res) {
+  return RES.reduce((s, r) => s + res[r], 0);
+}
+function canAfford(res, cost) {
+  return Object.entries(cost).every(([r, n]) => res[r] >= n);
+}
+function payCost(res, cost) {
+  const out = { ...res };
+  Object.entries(cost).forEach(([r, n]) => (out[r] -= n));
+  return out;
+}
+
+/* ============================== GEOMETRY ================================ */
+
+function hexagonCoords(radius) {
+  const list = [];
+  for (let q = -radius; q <= radius; q++) {
+    for (let r = -radius; r <= radius; r++) {
+      const s = -q - r;
+      if (Math.max(Math.abs(q), Math.abs(r), Math.abs(s)) <= radius) list.push({ q, r });
+    }
+  }
+  return list;
+}
+function translateCoords(coords, dq, dr) {
+  return coords.map((c) => ({ q: c.q + dq, r: c.r + dr }));
+}
+function fourIslandsCoords() {
+  const cluster = hexagonCoords(1);
+  return [
+    ...translateCoords(cluster, -4, -3),
+    ...translateCoords(cluster, 4, -3),
+    ...translateCoords(cluster, -4, 3),
+    ...translateCoords(cluster, 4, 3),
+  ];
+}
+function starCoords() {
+  const dirs = [
+    [1, 0],
+    [1, -1],
+    [0, -1],
+    [-1, 0],
+    [-1, 1],
+    [0, 1],
+  ];
+  const coords = [{ q: 0, r: 0 }];
+  dirs.forEach(([dq, dr]) => {
+    coords.push({ q: dq, r: dr });
+    coords.push({ q: dq * 2, r: dr * 2 });
+  });
+  return coords;
+}
+function ringAtollCoords() {
+  return hexagonCoords(2).filter((c) => !(c.q === 0 && c.r === 0));
+}
+function seafarersGoldConfig() {
+  const coords = hexagonCoords(3);
+  const withDist = coords.map((c) => ({ ...c, dist: Math.max(Math.abs(c.q), Math.abs(c.r), Math.abs(-c.q - c.r)) }));
+  const outer = withDist.filter((c) => c.dist >= 2);
+  const shuffledOuter = shuffle(outer);
+  const seaCount = Math.floor(outer.length * 0.42);
+  const forcedTypes = {};
+  shuffledOuter.slice(0, seaCount).forEach((c) => (forcedTypes[`${c.q},${c.r}`] = "sea"));
+  const goldCandidate = shuffledOuter[seaCount];
+  if (goldCandidate) forcedTypes[`${goldCandidate.q},${goldCandidate.r}`] = "gold";
+  return { coords, size: 40, desertCount: 2, forcedTypes };
+}
+function triangleCoords(n) {
+  const coords = [];
+  for (let q = 0; q <= n; q++) {
+    for (let r = 0; r <= n - q; r++) coords.push({ q, r });
+  }
+  return coords;
+}
+function diamondCoords(n) {
+  const coords = [];
+  for (let q = 0; q <= n; q++) {
+    for (let r = 0; r <= n; r++) coords.push({ q, r });
+  }
+  return coords;
+}
+function longCoastCoords() {
+  const coords = [];
+  for (let r = -1; r <= 1; r++) {
+    for (let q = -3; q <= 3; q++) coords.push({ q, r });
+  }
+  return coords;
+}
+function twinIslesCoords() {
+  const isleA = hexagonCoords(1);
+  const isleB = translateCoords(hexagonCoords(1), 6, 0);
+  const bridge = [{ q: 2, r: 0 }, { q: 3, r: 0 }, { q: 4, r: 0 }];
+  return [...isleA, ...bridge, ...isleB];
+}
+
+const MAPS = {
+  standard: {
+    name: "Standard",
+    desc: "The classic 19-hex board. Best for 3–4 players.",
+    minP: 3,
+    maxP: 4,
+    build: () => ({ coords: hexagonCoords(2), size: 46, desertCount: 1, portCount: 9 }),
+  },
+  extended: {
+    name: "Extended (5–6 Player)",
+    desc: "A bigger board for larger groups.",
+    minP: 5,
+    maxP: 6,
+    build: () => ({ coords: hexagonCoords(3), size: 40, desertCount: 2, portCount: 11 }),
+  },
+  small: {
+    name: "Small (Quick Game)",
+    desc: "A fast 7-hex board for a short game.",
+    minP: 2,
+    maxP: 3,
+    build: () => ({ coords: hexagonCoords(1), size: 56, desertCount: 1 }),
+  },
+  fourIslands: {
+    name: "Four Islands",
+    desc: "Four separate island clusters — spread out or cluster up.",
+    minP: 4,
+    maxP: 6,
+    build: () => ({ coords: fourIslandsCoords(), size: 40, desertCount: 2 }),
+  },
+  seafarersGold: {
+    name: "Seafarers Gold",
+    desc: "An ocean-ringed board with a wildcard gold hex. (No ship-building yet — settle freely.)",
+    minP: 3,
+    maxP: 6,
+    build: () => seafarersGoldConfig(),
+  },
+  star: {
+    name: "Star",
+    desc: "A branching 13-hex board with six arms.",
+    minP: 3,
+    maxP: 4,
+    build: () => ({ coords: starCoords(), size: 46, desertCount: 1 }),
+  },
+  ringAtoll: {
+    name: "Ring Atoll",
+    desc: "A hollow ring of hexes around open water.",
+    minP: 3,
+    maxP: 4,
+    build: () => ({ coords: ringAtollCoords(), size: 46, desertCount: 1 }),
+  },
+  triangle: {
+    name: "Triangle",
+    desc: "A triangular delta, tight and confrontational.",
+    minP: 3,
+    maxP: 4,
+    build: () => ({ coords: triangleCoords(4), size: 48, desertCount: 1 }),
+  },
+  diamond: {
+    name: "Diamond",
+    desc: "A diamond-shaped plateau with wide-open middle.",
+    minP: 3,
+    maxP: 4,
+    build: () => ({ coords: diamondCoords(3), size: 46, desertCount: 1 }),
+  },
+  longCoast: {
+    name: "Long Coast",
+    desc: "A stretched-out coastline for spread-out settling.",
+    minP: 4,
+    maxP: 6,
+    build: () => ({ coords: longCoastCoords(), size: 42, desertCount: 2 }),
+  },
+  twinIsles: {
+    name: "Twin Isles",
+    desc: "Two islands joined by a narrow isthmus.",
+    minP: 4,
+    maxP: 6,
+    build: () => ({ coords: twinIslesCoords(), size: 42, desertCount: 2 }),
+  },
+};
+
+function hexCenter(q, r, size) {
+  return { x: size * Math.sqrt(3) * (q + r / 2), y: size * 1.5 * r };
+}
+function hexCorners(cx, cy, size) {
+  const pts = [];
+  for (let i = 0; i < 6; i++) {
+    const angle = (Math.PI / 180) * (60 * i - 30);
+    pts.push({ x: cx + size * Math.cos(angle), y: cy + size * Math.sin(angle) });
+  }
+  return pts;
+}
+
+function buildGeometry(coords, size) {
+  const vertexMap = new Map();
+  const edgeMap = new Map();
+  let vId = 0,
+    eId = 0;
+  const hexes = coords.map((hc, idx) => {
+    const { x: cx, y: cy } = hexCenter(hc.q, hc.r, size);
+    const corners = hexCorners(cx, cy, size);
+    const cornerIds = corners.map((pt) => {
+      const key = `${Math.round(pt.x * 10)}_${Math.round(pt.y * 10)}`;
+      let v = vertexMap.get(key);
+      if (!v) {
+        v = { id: "v" + vId++, x: pt.x, y: pt.y, hexIds: [] };
+        vertexMap.set(key, v);
+      }
+      v.hexIds.push(idx);
+      return v.id;
+    });
+    const edgeIds = [];
+    for (let i = 0; i < 6; i++) {
+      const a = cornerIds[i],
+        b = cornerIds[(i + 1) % 6];
+      const key = a < b ? a + "|" + b : b + "|" + a;
+      let e = edgeMap.get(key);
+      if (!e) {
+        e = { id: "e" + eId++, v1: a, v2: b, hexIds: [] };
+        edgeMap.set(key, e);
+      }
+      e.hexIds.push(idx);
+      edgeIds.push(e.id);
+    }
+    return { id: "h" + idx, q: hc.q, r: hc.r, cx, cy, size, cornerIds, edgeIds, resource: null, number: null };
+  });
+  const vertices = Array.from(vertexMap.values());
+  const edges = Array.from(edgeMap.values());
+  return { hexes, vertices, edges };
+}
+
+function orderAllBoundaryLoops(edges) {
+  const boundary = edges.filter((e) => e.hexIds.length === 1);
+  const byVertex = new Map();
+  boundary.forEach((e) => {
+    [e.v1, e.v2].forEach((v) => {
+      if (!byVertex.has(v)) byVertex.set(v, []);
+      byVertex.get(v).push(e);
+    });
+  });
+  const visited = new Set();
+  const loops = [];
+  for (const start of boundary) {
+    if (visited.has(start.id)) continue;
+    const loop = [];
+    let current = start;
+    let fromVertex = current.v1;
+    while (current && !visited.has(current.id)) {
+      loop.push(current);
+      visited.add(current.id);
+      const nextVertex = current.v1 === fromVertex ? current.v2 : current.v1;
+      const candidates = (byVertex.get(nextVertex) || []).filter((e) => !visited.has(e.id));
+      current = candidates[0];
+      fromVertex = nextVertex;
+    }
+    loops.push(loop);
+  }
+  return loops;
+}
+
+function assignBoard(coords, size, options = {}) {
+  const geo = buildGeometry(coords, size);
+  const forcedTypes = options.forcedTypes || {};
+  const desertCount = options.desertCount ?? 1;
+
+  const forcedIdx = [];
+  const goldIdx = [];
+  geo.hexes.forEach((h, i) => {
+    const key = `${h.q},${h.r}`;
+    if (forcedTypes[key]) {
+      h.resource = forcedTypes[key];
+      forcedIdx.push(i);
+      if (forcedTypes[key] === "gold") goldIdx.push(i);
+    }
+  });
+  const openIdx = geo.hexes.map((_, i) => i).filter((i) => !forcedIdx.includes(i));
+  const nonDesertOpenCount = Math.max(0, openIdx.length - desertCount);
+
+  const scale = nonDesertOpenCount / 18;
+  const base = { wood: 4, wheat: 4, sheep: 4, brick: 3, ore: 3 };
+  const resourcePool = [];
+  RES.forEach((r) => {
+    const count = Math.round(base[r] * scale);
+    for (let i = 0; i < count; i++) resourcePool.push(r);
+  });
+  while (resourcePool.length < nonDesertOpenCount) resourcePool.push(RES[Math.floor(Math.random() * RES.length)]);
+  while (resourcePool.length > nonDesertOpenCount) resourcePool.pop();
+  for (let i = 0; i < desertCount; i++) resourcePool.push("desert");
+
+  const numberTargetCount = nonDesertOpenCount + goldIdx.length;
+  const reps = Math.floor(numberTargetCount / NUMBER_BASE.length);
+  let numberPool = [];
+  for (let i = 0; i < reps; i++) numberPool.push(...NUMBER_BASE);
+  const remainder = numberTargetCount - numberPool.length;
+  const extra = shuffle(NUMBER_BASE);
+  for (let i = 0; i < remainder; i++) numberPool.push(extra[i % extra.length]);
+
+  const neighborPairs = geo.edges.filter((e) => e.hexIds.length === 2).map((e) => e.hexIds);
+
+  let placedResources, numberByIdx, desertHexId;
+  for (let attempt = 0; attempt < 300; attempt++) {
+    placedResources = shuffle(resourcePool);
+    const openNonDesert = [];
+    openIdx.forEach((hi, k) => {
+      if (placedResources[k] !== "desert") openNonDesert.push(hi);
+    });
+    const numberTargets = shuffle([...goldIdx, ...openNonDesert]);
+    const shuffledNums = shuffle(numberPool);
+    numberByIdx = new Map();
+    numberTargets.forEach((hi, k) => numberByIdx.set(hi, shuffledNums[k]));
+    let ok = true;
+    for (const [a, b] of neighborPairs) {
+      const na = numberByIdx.get(a),
+        nb = numberByIdx.get(b);
+      if (na && nb && (na === 6 || na === 8) && (nb === 6 || nb === 8)) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) break;
+  }
+  openIdx.forEach((hi, k) => {
+    geo.hexes[hi].resource = placedResources[k];
+    if (placedResources[k] === "desert") desertHexId = geo.hexes[hi].id;
+  });
+  geo.hexes.forEach((h, i) => {
+    if (numberByIdx.has(i)) h.number = numberByIdx.get(i);
+  });
+  if (!desertHexId) desertHexId = geo.hexes[0].id;
+
+  const loops = orderAllBoundaryLoops(geo.edges);
+  const totalBoundaryLen = loops.reduce((a, l) => a + l.length, 0) || 1;
+  const landCount = geo.hexes.filter((h) => h.resource !== "sea").length;
+  const portTotal = options.portCount ?? Math.max(5, Math.round((9 * landCount) / 19));
+  const portTypesBase = ["3:1", "wood", "3:1", "brick", "3:1", "sheep", "wheat", "3:1", "ore"];
+  let portTypes = [];
+  while (portTypes.length < portTotal) portTypes.push(...portTypesBase);
+  portTypes = shuffle(portTypes.slice(0, portTotal));
+  const ports = [];
+  let typeCursor = 0;
+  loops.forEach((loop) => {
+    const share = Math.max(1, Math.round((portTotal * loop.length) / totalBoundaryLen));
+    const step = Math.max(2, Math.floor(loop.length / share));
+    for (let i = 0; i < share && i * step < loop.length; i++) {
+      const e = loop[i * step];
+      ports.push({ edgeId: e.id, type: portTypes[typeCursor % portTypes.length], vertexIds: [e.v1, e.v2] });
+      typeCursor += 1;
+    }
+  });
+
+  return { hexes: geo.hexes, vertices: geo.vertices, edges: geo.edges, ports, robberHexId: desertHexId };
+}
+
+/* ============================ GAME LOGIC HELPERS ========================= */
+
+function vertexEdges(board, vertexId) {
+  return board.edges.filter((e) => e.v1 === vertexId || e.v2 === vertexId);
+}
+function edgeOtherVertex(edge, vertexId) {
+  return edge.v1 === vertexId ? edge.v2 : edge.v1;
+}
+function buildingAt(board, vertexId) {
+  return board.buildings[vertexId] || null;
+}
+function roadOwnerAt(board, edgeId) {
+  return board.roads[edgeId] || null;
+}
+function isValidSettlementSpot(board, vertexId, playerId, requireRoad) {
+  if (buildingAt(board, vertexId)) return false;
+  const adjEdges = vertexEdges(board, vertexId);
+  for (const e of adjEdges) {
+    const other = edgeOtherVertex(e, vertexId);
+    if (buildingAt(board, other)) return false;
+  }
+  if (requireRoad) {
+    const connected = adjEdges.some((e) => roadOwnerAt(board, e.id) === playerId);
+    if (!connected) return false;
+  }
+  return true;
+}
+function isValidRoadSpot(board, edgeId, playerId) {
+  const edge = board.edges.find((e) => e.id === edgeId);
+  if (!edge) return false;
+  if (roadOwnerAt(board, edgeId)) return false;
+  for (const v of [edge.v1, edge.v2]) {
+    const b = buildingAt(board, v);
+    if (b && b.owner === playerId) return true;
+    const others = vertexEdges(board, v).filter((e) => e.id !== edgeId);
+    if (others.some((e) => roadOwnerAt(board, e.id) === playerId) && (!b || b.owner === playerId)) return true;
+  }
+  return false;
+}
+function hexResourcesForVertex(board, vertexId) {
+  const v = board.vertices.find((x) => x.id === vertexId);
+  return v ? v.hexIds.map((i) => board.hexes[i]) : [];
+}
+function playerPortRatio(board, playerId, resource) {
+  const ownedVertices = Object.entries(board.buildings)
+    .filter(([, b]) => b.owner === playerId)
+    .map(([vid]) => vid);
+  let best = 4;
+  board.ports.forEach((p) => {
+    if (p.vertexIds.some((v) => ownedVertices.includes(v))) {
+      if (p.type === resource) best = Math.min(best, 2);
+      else if (p.type === "3:1") best = Math.min(best, 3);
+    }
+  });
+  return best;
+}
+function longestRoadForPlayer(board, playerId) {
+  const myEdges = board.edges.filter((e) => roadOwnerAt(board, e.id) === playerId);
+  if (myEdges.length === 0) return 0;
+  const adjByVertex = new Map();
+  myEdges.forEach((e) => {
+    [e.v1, e.v2].forEach((v) => {
+      if (!adjByVertex.has(v)) adjByVertex.set(v, []);
+      adjByVertex.get(v).push(e);
+    });
+  });
+  let best = 0;
+  function blocked(vertexId) {
+    const b = buildingAt(board, vertexId);
+    return b && b.owner !== playerId;
+  }
+  function dfs(vertexId, usedEdges, length) {
+    best = Math.max(best, length);
+    const options = (adjByVertex.get(vertexId) || []).filter((e) => !usedEdges.has(e.id));
+    for (const e of options) {
+      const nextV = edgeOtherVertex(e, vertexId);
+      if (blocked(nextV) && length > 0) continue;
+      usedEdges.add(e.id);
+      dfs(nextV, usedEdges, length + 1);
+      usedEdges.delete(e.id);
+    }
+  }
+  for (const v of adjByVertex.keys()) {
+    if (!blocked(v)) dfs(v, new Set(), 0);
+    else {
+      // allow starting AT a foreign settlement's vertex (edge begins there) but cannot pass through
+      const opts = adjByVertex.get(v) || [];
+      for (const e of opts) {
+        const used = new Set([e.id]);
+        best = Math.max(best, 1);
+        dfs(edgeOtherVertex(e, v), used, 1);
+      }
+    }
+  }
+  return best;
+}
+function computeVictoryPoints(state, player) {
+  let vp = 0;
+  Object.values(state.board.buildings).forEach((b) => {
+    if (b.owner === player.id) vp += b.type === "city" ? 2 : 1;
+  });
+  vp += player.devCards.filter((c) => c.type === "vp").length;
+  if (state.longestRoad.playerId === player.id) vp += 2;
+  if (state.largestArmy.playerId === player.id) vp += 2;
+  return vp;
+}
+
+/* ============================== STORAGE HOOK ============================= */
+
+/* ============================== FIREBASE STORAGE LAYER ============================== */
+/* Replaces Claude artifact's window.storage with Firebase Realtime Database.
+   Firebase is initialized in the <script type="module"> block in index.html
+   and exposed on window.__fb = { db, ref, get, set, onValue }. */
+
+async function fbGetGame(code) {
+  const { db, ref, get } = window.__fb;
+  const snap = await get(ref(db, "games/" + code));
+  return snap.exists() ? JSON.parse(snap.val().json) : null;
+}
+async function fbSetGame(code, obj) {
+  const { db, ref, set } = window.__fb;
+  await set(ref(db, "games/" + code), { json: JSON.stringify(obj), updatedAt: Date.now() });
+}
+function fbSubscribeGame(code, cb) {
+  const { db, ref, onValue } = window.__fb;
+  const r = ref(db, "games/" + code);
+  return onValue(r, (snap) => {
+    if (snap.exists()) cb(JSON.parse(snap.val().json));
+  });
+}
+
+function useGame(code) {
+  const [state, setState] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!code) return;
+    let unsub = null;
+    try {
+      unsub = fbSubscribeGame(code, (val) => setState(val));
+    } catch (e) {
+      setError("couldn't connect to Firebase — check your config in index.html");
+    }
+    return () => {
+      if (unsub) unsub();
+    };
+  }, [code]);
+
+  const mutate = useCallback(
+    async (updater) => {
+      try {
+        let current = null;
+        try {
+          current = await fbGetGame(code);
+        } catch (e) {
+          /* fall back to local state */
+        }
+        if (!current) current = state;
+        const next = updater(structuredCloneSafe(current));
+        if (!next) return;
+        await fbSetGame(code, next);
+        setState(next);
+      } catch (e) {
+        setError("couldn't save game");
+      }
+    },
+    [code, state]
+  );
+
+  return { state, mutate, error };
+}
+
+function structuredCloneSafe(obj) {
+  return obj ? JSON.parse(JSON.stringify(obj)) : obj;
+}
+
+function useClientId() {
+  const [clientId, setClientId] = useState(null);
+  useEffect(() => {
+    let id = null;
+    try {
+      id = localStorage.getItem("landfall-client-id");
+    } catch (e) {
+      /* no localStorage available */
+    }
+    if (!id) {
+      id = "p_" + uid(10);
+      try {
+        localStorage.setItem("landfall-client-id", id);
+      } catch (e) {
+        /* memory-only fallback */
+      }
+    }
+    setClientId(id);
+  }, []);
+  return clientId;
+}
+
+/* ============================== GAME CREATION ============================ */
+
+const BOT_NAMES = ["Ranger Bex", "Trader Jo", "Wildcard Wren", "Captain Ridge", "Old Man Hollow", "Prospector Finch"];
+
+function makePlayer(id, name, color, isBot) {
+  return {
+    id,
+    name,
+    color,
+    isBot: !!isBot,
+    resources: emptyResources(),
+    devCards: [],
+    playedKnights: 0,
+    devPlayedThisTurn: false,
+  };
+}
+
+function createNewGame(hostId, hostName, maxPlayers, mapId = "standard", options = {}) {
+  const map = MAPS[mapId] || MAPS.standard;
+  const built = map.build(maxPlayers);
+  const geo = assignBoard(built.coords, built.size, built);
+  const board = {
+    hexes: geo.hexes,
+    vertices: geo.vertices,
+    edges: geo.edges,
+    ports: geo.ports,
+    buildings: {},
+    roads: {},
+    robberHexId: geo.robberHexId,
+  };
+  return {
+    code: uid(5),
+    maxPlayers,
+    mapId,
+    options: { ...DEFAULT_OPTIONS, ...options },
+    phase: "lobby",
+    players: [makePlayer(hostId, hostName, PLAYER_COLORS[0], false)],
+    board,
+    bank: { wood: BANK_START, brick: BANK_START, sheep: BANK_START, wheat: BANK_START, ore: BANK_START },
+    devDeck: shuffle(DEV_DECK),
+    turnOrder: [],
+    currentIndex: 0,
+    turnCounter: 0,
+    turnPhase: "roll",
+    setupRound: 1,
+    setupForward: true,
+    setupPlaced: 0,
+    setupAwaitingRoad: false,
+    diceRoll: null,
+    pendingDiscards: {},
+    robberMoveRequired: null,
+    robberStealChoices: null,
+    tradeOffer: null,
+    longestRoad: { playerId: null, length: 0 },
+    largestArmy: { playerId: null, count: 0 },
+    winner: null,
+    lastGains: [],
+    gainsSeq: 0,
+    log: [{ msg: `${hostName} created the game.` }],
+    lastUpdated: Date.now(),
+  };
+}
+
+function addLog(state, msg) {
+  state.log = [...state.log.slice(-49), { msg }];
+  state.lastUpdated = Date.now();
+  return state;
+}
+
+function recordGain(state, playerId, resource, hexId) {
+  state.gainsSeq = (state.gainsSeq || 0) + 1;
+  state.lastGains = [...(state.lastGains || []).slice(-39), { seq: state.gainsSeq, playerId, resource, hexId }];
+  return state;
+}
+
+/* ================================ APP =================================== */
+
+function Landfall() {
+  const clientId = useClientId();
+  const [code, setCode] = useState(null);
+  const [nameDraft, setNameDraft] = useState("");
+  const [joinCodeDraft, setJoinCodeDraft] = useState("");
+  const [maxPlayersDraft, setMaxPlayersDraft] = useState(4);
+  const [mapDraft, setMapDraft] = useState("standard");
+  const [aiCountDraft, setAiCountDraft] = useState(2);
+  const [optionsDraft, setOptionsDraft] = useState({ ...DEFAULT_OPTIONS });
+  const [mode, setMode] = useState("home");
+  const { state, mutate, error } = useGame(code);
+
+  if (!clientId) {
+    return <Shell><div style={{ padding: 40, textAlign: "center", color: "#d9cba4", flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>Loading…</div></Shell>;
+  }
+
+  if (!code) {
+    return (
+      <Home
+        mode={mode}
+        setMode={setMode}
+        nameDraft={nameDraft}
+        setNameDraft={setNameDraft}
+        joinCodeDraft={joinCodeDraft}
+        setJoinCodeDraft={setJoinCodeDraft}
+        maxPlayersDraft={maxPlayersDraft}
+        setMaxPlayersDraft={setMaxPlayersDraft}
+        mapDraft={mapDraft}
+        setMapDraft={setMapDraft}
+        aiCountDraft={aiCountDraft}
+        setAiCountDraft={setAiCountDraft}
+        optionsDraft={optionsDraft}
+        setOptionsDraft={setOptionsDraft}
+        onCreate={async () => {
+          const name = nameDraft.trim() || "Player 1";
+          const newState = createNewGame(clientId, name, maxPlayersDraft, mapDraft, optionsDraft);
+          await fbSetGame(newState.code, newState);
+          setCode(newState.code);
+        }}
+        onSolo={async () => {
+          const name = nameDraft.trim() || "Player 1";
+          const total = Math.min(6, aiCountDraft + 1);
+          const newState = createNewGame(clientId, name, total, mapDraft, optionsDraft);
+          const botNames = shuffle(BOT_NAMES);
+          for (let i = 0; i < aiCountDraft; i++) {
+            newState.players.push(makePlayer("bot_" + uid(8), botNames[i % botNames.length], PLAYER_COLORS[(i + 1) % PLAYER_COLORS.length], true));
+          }
+          newState.turnOrder = shuffle(newState.players.map((p) => p.id));
+          newState.phase = "setup";
+          newState.currentIndex = 0;
+          addLog(newState, `Solo game started against ${aiCountDraft} AI player${aiCountDraft === 1 ? "" : "s"}.`);
+          await fbSetGame(newState.code, newState);
+          setCode(newState.code);
+        }}
+        onJoin={async () => {
+          const joinCode = joinCodeDraft.trim().toUpperCase();
+          if (!joinCode) return;
+          try {
+            const g = await fbGetGame(joinCode);
+            if (!g) {
+              alert("No game found with that code.");
+              return;
+            }
+            if (!g.players.some((p) => p.id === clientId)) {
+              if (g.players.length >= g.maxPlayers) {
+                alert("That game is full.");
+                return;
+              }
+              if (g.phase !== "lobby") {
+                alert("That game has already started.");
+                return;
+              }
+              g.players.push(
+                makePlayer(clientId, nameDraft.trim() || `Player ${g.players.length + 1}`, PLAYER_COLORS[g.players.length % PLAYER_COLORS.length], false)
+              );
+              addLog(g, `${nameDraft.trim() || "A new player"} joined.`);
+              await fbSetGame(joinCode, g);
+            }
+            setCode(joinCode);
+          } catch (e) {
+            alert("Couldn't join that game.");
+          }
+        }}
+      />
+    );
+  }
+
+  if (!state) {
+    return <Shell><div style={{ padding: 40, textAlign: "center", color: "#d9cba4", flex: 1, display: "flex", alignItems: "center", justifyContent: "center" }}>Loading game {code}…</div></Shell>;
+  }
+
+  return (
+    <Shell>
+      <GameView state={state} mutate={mutate} clientId={clientId} code={code} onLeave={() => setCode(null)} error={error} />
+    </Shell>
+  );
+}
+
+function Shell({ children }) {
+  return (
+    <div
+      className="lf-root"
+      style={{
+        fontFamily: "'Inter', -apple-system, sans-serif",
+        background: "radial-gradient(1400px 900px at 50% 18%, #155a74, #0a2838 72%)",
+        color: "#f7edd3",
+        overflow: "hidden",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <style>{`
+        html, body { height: 100%; margin: 0; overflow: hidden; }
+        #root, #app, [id*="root"] { height: 100%; }
+        @import url('https://fonts.googleapis.com/css2?family=Fraunces:wght@500;700;800&family=Inter:wght@400;500;600;700&display=swap');
+        .lf-root {
+          height: 100vh;
+          height: 100dvh;
+          max-height: 100vh;
+          max-height: 100dvh;
+          --cream: #f7edd3; --ink: #2a2015; --wood: #7a4a21; --gold: #e8b64c;
+          --panel: rgba(24,17,10,0.82); --panel2: rgba(43,30,18,0.9);
+          --ok: #5cb85c; --bad: #d9534f; --blue: #4a9fd8;
+        }
+        .lf-root * { box-sizing: border-box; }
+        .lf-root button { font-family: inherit; cursor: pointer; }
+        .lf-root button:disabled { cursor: not-allowed; opacity: 0.45; }
+        .lf-root ::-webkit-scrollbar { width: 8px; height: 8px; }
+        .lf-root ::-webkit-scrollbar-thumb { background: var(--gold); border-radius: 4px; opacity: 0.6; }
+        .lf-root input, .lf-root select {
+          font-family: inherit; font-size: 15px; color: var(--cream);
+          background: rgba(0,0,0,0.35); border: 1px solid #8a7a55; border-radius: 9px; padding: 10px 12px;
+        }
+        .lf-root h1, .lf-root h2, .lf-root h3, .lf-root h4 { font-family: 'Fraunces', Georgia, serif; }
+
+        .lf-game-grid {
+          display: grid;
+          height: 100%;
+          min-height: 0;
+          position: relative;
+          grid-template-columns: 1fr 320px;
+          grid-template-rows: auto 1fr auto;
+          grid-template-areas:
+            "topbar topbar"
+            "board sidebar"
+            "actions sidebar";
+        }
+        .lf-area-topbar { grid-area: topbar; min-width: 0; }
+        .lf-area-board { grid-area: board; min-height: 0; min-width: 0; position: relative; overflow: hidden; display: flex; flex-direction: column; }
+        .lf-area-sidebar { grid-area: sidebar; min-height: 0; min-width: 0; overflow-y: auto; background: var(--panel2); border-left: 1px solid rgba(255,255,255,0.12); display: flex; flex-direction: column; }
+        .lf-area-actions { grid-area: actions; }
+        .lf-board-scroll { flex: 1; min-height: 0; overflow: auto; }
+        .lf-sidebar-players { display: flex; flex-direction: column; gap: 6px; }
+        .lf-sidebar-log { flex: 1; min-height: 120px; }
+        .lf-actionbar {
+          padding: 12px 16px;
+          background: var(--panel2);
+          border-top: 1px solid rgba(255,255,255,0.12);
+          color: #f7edd3;
+          font-size: 14px;
+          font-weight: 600;
+          text-align: center;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 10px;
+        }
+        .lf-actionbar.accent { background: linear-gradient(180deg, #d9a437, #b57e20); color: #3a2a0a; }
+
+        @media (max-width: 860px) and (orientation: portrait) {
+          .lf-game-grid {
+            grid-template-columns: 1fr;
+            grid-template-rows: auto 52vh auto auto;
+            grid-template-areas:
+              "topbar"
+              "board"
+              "actions"
+              "sidebar";
+            overflow-y: auto;
+          }
+          .lf-area-board { min-height: 300px; }
+          .lf-area-sidebar { border-left: none; border-top: 1px solid rgba(255,255,255,0.12); max-height: none; }
+          .lf-actionbar { padding: 8px 12px; font-size: 13px; }
+          .lf-area-sidebar .card { padding: 8px 10px !important; }
+          .lf-area-sidebar h4 { margin-bottom: 4px !important; }
+          .lf-area-sidebar > div { gap: 8px !important; padding: 10px !important; }
+        }
+        @media (orientation: landscape) and (max-height: 520px) {
+          .lf-game-grid {
+            grid-template-columns: 1fr 230px;
+            grid-template-rows: auto 1fr auto;
+            grid-template-areas:
+              "topbar topbar"
+              "board sidebar"
+              "actions sidebar";
+          }
+          .lf-area-sidebar { font-size: 12px; }
+          .lf-area-sidebar .card { padding: 8px !important; }
+        }
+      `}</style>
+      {children}
+    </div>
+  );
+}
+
+function Btn({ children, onClick, disabled, variant = "primary", small }) {
+  const [pressed, setPressed] = useState(false);
+  const styles = {
+    primary: { bg: "linear-gradient(180deg, #9a6a2f, #74461d)", fg: "#f7edd3", border: "#c8963f" },
+    accent: { bg: "linear-gradient(180deg, #3f8f5a, #2a6b3c)", fg: "#f7edd3", border: "#6fc98d" },
+    gold: { bg: "linear-gradient(180deg, #d9a437, #b57e20)", fg: "#3a2a0a", border: "#f2d27a" },
+    ghost: { bg: "rgba(255,255,255,0.06)", fg: "#e7dbb6", border: "#8a7a55" },
+  }[variant];
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      onMouseDown={() => setPressed(true)}
+      onMouseUp={() => setPressed(false)}
+      onMouseLeave={() => setPressed(false)}
+      style={{
+        background: styles.bg,
+        color: styles.fg,
+        border: `1px solid ${styles.border}`,
+        borderBottomWidth: pressed ? 2 : 4,
+        borderBottomColor: styles.border,
+        borderRadius: small ? 9 : 12,
+        padding: small ? "8px 12px" : "14px 18px",
+        fontSize: small ? 13 : 15,
+        fontWeight: 700,
+        letterSpacing: 0.2,
+        transform: pressed ? "translateY(2px)" : "none",
+        transition: "transform 0.06s, filter 0.12s",
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+/* ============================== HOME / LOBBY ============================= */
+
+function MapPicker({ mapDraft, setMapDraft }) {
+  return (
+    <Field label="Map">
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {Object.entries(MAPS).map(([id, m]) => (
+          <button
+            key={id}
+            onClick={() => setMapDraft(id)}
+            style={{
+              textAlign: "left",
+              padding: "8px 10px",
+              borderRadius: 8,
+              border: mapDraft === id ? "2px solid var(--gold)" : "1px solid #8a7a55",
+              background: mapDraft === id ? "rgba(232,182,76,0.18)" : "rgba(0,0,0,0.2)",
+            }}
+          >
+            <div style={{ fontWeight: 700, fontSize: 13, color: "#f7edd3" }}>
+              {m.name} <span style={{ fontWeight: 400, color: "#a89a7e" }}>· {m.minP}–{m.maxP} players</span>
+            </div>
+            <div style={{ fontSize: 12, color: "#d9cba4" }}>{m.desc}</div>
+          </button>
+        ))}
+      </div>
+    </Field>
+  );
+}
+
+function OptionRow({ label, value, options, onChange }) {
+  return (
+    <Field label={label}>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {options.map((opt) => (
+          <button
+            key={opt.value}
+            onClick={() => onChange(opt.value)}
+            style={{
+              padding: "6px 10px",
+              borderRadius: 8,
+              border: value === opt.value ? "2px solid var(--gold)" : "1px solid #8a7a55",
+              background: value === opt.value ? "rgba(232,182,76,0.18)" : "rgba(0,0,0,0.2)",
+              color: "#f7edd3",
+              fontWeight: 600,
+              fontSize: 12,
+            }}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+    </Field>
+  );
+}
+
+function OptionsPicker({ optionsDraft, setOptionsDraft }) {
+  const set = (patch) => setOptionsDraft((o) => ({ ...o, ...patch }));
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <OptionRow
+        label="Victory points to win"
+        value={optionsDraft.winVp}
+        options={[8, 10, 12, 15].map((v) => ({ value: v, label: String(v) }))}
+        onChange={(v) => set({ winVp: v })}
+      />
+      <OptionRow
+        label="Discard limit on a 7"
+        value={optionsDraft.discardLimit}
+        options={[
+          { value: 7, label: "7 (standard)" },
+          { value: 9, label: "9" },
+          { value: 99, label: "No limit" },
+        ]}
+        onChange={(v) => set({ discardLimit: v })}
+      />
+      <OptionRow
+        label="Robber"
+        value={optionsDraft.friendlyRobber}
+        options={[
+          { value: false, label: "Standard (steals a card)" },
+          { value: true, label: "Friendly (blocks only)" },
+        ]}
+        onChange={(v) => set({ friendlyRobber: v })}
+      />
+      <OptionRow
+        label="Turn timer"
+        value={optionsDraft.turnTimerSec}
+        options={[
+          { value: 0, label: "Off" },
+          { value: 60, label: "60s" },
+          { value: 90, label: "90s" },
+          { value: 120, label: "120s" },
+        ]}
+        onChange={(v) => set({ turnTimerSec: v })}
+      />
+    </div>
+  );
+}
+
+function Home({
+  mode,
+  setMode,
+  nameDraft,
+  setNameDraft,
+  joinCodeDraft,
+  setJoinCodeDraft,
+  maxPlayersDraft,
+  setMaxPlayersDraft,
+  mapDraft,
+  setMapDraft,
+  aiCountDraft,
+  setAiCountDraft,
+  optionsDraft,
+  setOptionsDraft,
+  onCreate,
+  onSolo,
+  onJoin,
+}) {
+  return (
+    <Shell>
+      <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "flex-start", padding: "40px 16px", overflowY: "auto" }}>
+        <div
+          style={{
+            maxWidth: 460,
+            width: "100%",
+            background: "linear-gradient(160deg, rgba(56,39,22,0.92), rgba(38,26,15,0.94))",
+            border: "2px solid #9a6b33",
+            borderRadius: 18,
+            boxShadow: "0 18px 50px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.12)",
+            padding: "28px 32px",
+          }}
+        >
+        <h1
+          style={{
+            fontSize: 40,
+            letterSpacing: 5,
+            margin: "0 0 4px",
+            color: "var(--gold)",
+            fontWeight: 800,
+            textAlign: "center",
+            textShadow: "0 3px 0 rgba(0,0,0,0.5), 0 0 24px rgba(232,182,76,0.35)",
+          }}
+        >
+          LANDFALL
+        </h1>
+        <p style={{ margin: "0 0 26px", color: "#d9cba4", fontSize: 13, letterSpacing: 0.5, textAlign: "center" }}>
+          Settle a new hex frontier. Trade, build, and race to victory — with friends or AI opponents.
+        </p>
+
+        {mode === "home" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <Btn onClick={() => setMode("create")}>Start a new game</Btn>
+            <Btn variant="ghost" onClick={() => setMode("join")}>Join with a code</Btn>
+            <Btn variant="ghost" onClick={() => setMode("solo")}>Play solo vs AI</Btn>
+          </div>
+        )}
+
+        {mode === "create" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <Field label="Your name">
+              <input value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} placeholder="Brad" style={inputStyle} />
+            </Field>
+            <Field label="Max players">
+              <div style={{ display: "flex", gap: 8 }}>
+                {[3, 4, 5, 6].map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setMaxPlayersDraft(n)}
+                    style={pillStyle(maxPlayersDraft === n)}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </Field>
+            <MapPicker mapDraft={mapDraft} setMapDraft={setMapDraft} />
+            <OptionsPicker optionsDraft={optionsDraft} setOptionsDraft={setOptionsDraft} />
+            <p style={{ fontSize: 12, color: "#a89a7e", margin: 0 }}>You can add AI players to fill empty seats once the lobby is open.</p>
+            <Btn onClick={onCreate}>Create game</Btn>
+            <Btn variant="ghost" onClick={() => setMode("home")}>Back</Btn>
+          </div>
+        )}
+
+        {mode === "solo" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <Field label="Your name">
+              <input value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} placeholder="Brad" style={inputStyle} />
+            </Field>
+            <Field label="Number of AI opponents">
+              <div style={{ display: "flex", gap: 8 }}>
+                {[1, 2, 3, 4, 5].map((n) => (
+                  <button
+                    key={n}
+                    onClick={() => setAiCountDraft(n)}
+                    style={pillStyle(aiCountDraft === n)}
+                  >
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </Field>
+            <MapPicker mapDraft={mapDraft} setMapDraft={setMapDraft} />
+            <OptionsPicker optionsDraft={optionsDraft} setOptionsDraft={setOptionsDraft} />
+            <Btn onClick={onSolo}>Start solo game</Btn>
+            <Btn variant="ghost" onClick={() => setMode("home")}>Back</Btn>
+          </div>
+        )}
+
+        {mode === "join" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <Field label="Your name">
+              <input value={nameDraft} onChange={(e) => setNameDraft(e.target.value)} placeholder="Your name" style={inputStyle} />
+            </Field>
+            <Field label="Game code">
+              <input
+                value={joinCodeDraft}
+                onChange={(e) => setJoinCodeDraft(e.target.value.toUpperCase())}
+                placeholder="ABCDE"
+                style={{ ...inputStyle, textTransform: "uppercase", letterSpacing: 3, fontWeight: 700 }}
+              />
+            </Field>
+            <Btn onClick={onJoin}>Join game</Btn>
+            <Btn variant="ghost" onClick={() => setMode("home")}>Back</Btn>
+          </div>
+        )}
+        </div>
+      </div>
+    </Shell>
+  );
+}
+
+function pillStyle(active) {
+  return {
+    flex: 1,
+    padding: "8px 0",
+    borderRadius: 8,
+    border: active ? "2px solid var(--gold)" : "1px solid #8a7a55",
+    background: active ? "rgba(232,182,76,0.18)" : "rgba(0,0,0,0.25)",
+    color: "#f7edd3",
+    fontWeight: 700,
+  };
+}
+
+function Field({ label, children }) {
+  return (
+    <label style={{ display: "flex", flexDirection: "column", gap: 6, fontSize: 12, fontWeight: 700, letterSpacing: 0.5, textTransform: "uppercase", color: "#d9cba4" }}>
+      {label}
+      {children}
+    </label>
+  );
+}
+const inputStyle = {
+  padding: "10px 12px",
+  borderRadius: 9,
+  border: "1px solid #8a7a55",
+  fontSize: 15,
+  background: "rgba(0,0,0,0.35)",
+  color: "#f7edd3",
+};
+
+/* ============================== GAME VIEW ================================ */
+
+function GameView({ state, mutate, clientId, code, onLeave, error }) {
+  const me = state.players.find((p) => p.id === clientId);
+  const isPlayer = !!me;
+
+  if (state.phase === "lobby") {
+    return <Lobby state={state} mutate={mutate} clientId={clientId} code={code} onLeave={onLeave} isPlayer={isPlayer} />;
+  }
+  if (!isPlayer) {
+    return (
+      <div style={{ padding: 24 }}>
+        <p>This game is full or already in progress — you're viewing as a spectator isn't supported yet.</p>
+        <Btn onClick={onLeave}>Back</Btn>
+      </div>
+    );
+  }
+  return <Board state={state} mutate={mutate} clientId={clientId} code={code} onLeave={onLeave} error={error} />;
+}
+
+function Lobby({ state, mutate, clientId, code, onLeave, isPlayer }) {
+  const isHost = state.players[0]?.id === clientId;
+  return (
+    <div style={{ flex: 1, minHeight: 0, display: "flex", alignItems: "center", justifyContent: "flex-start", padding: "40px 16px", overflowY: "auto" }}>
+      <div
+        style={{
+          maxWidth: 460,
+          width: "100%",
+          background: "linear-gradient(160deg, rgba(56,39,22,0.92), rgba(38,26,15,0.94))",
+          border: "2px solid #9a6b33",
+          borderRadius: 18,
+          boxShadow: "0 18px 50px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.12)",
+          padding: "28px 32px",
+        }}
+      >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+        <h2 style={{ margin: 0, color: "var(--gold)" }}>Lobby</h2>
+        <Btn variant="ghost" small onClick={onLeave}>Leave</Btn>
+      </div>
+      <p style={{ fontSize: 14, color: "#d9cba4" }}>
+        Share this code so friends can join: <b style={{ fontSize: 28, letterSpacing: 5, color: "var(--gold)" }}>{code}</b>
+      </p>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6, margin: "16px 0" }}>
+        {state.players.map((p) => (
+          <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 10px", background: "rgba(0,0,0,0.25)", borderRadius: 8 }}>
+            <span style={{ width: 12, height: 12, borderRadius: "50%", background: p.color, display: "inline-block" }} />
+            <span style={{ fontWeight: 600 }}>{p.name}</span>
+            {p.isBot && <span style={{ fontSize: 11, color: "#a89a7e" }}>AI</span>}
+            {p.id === state.players[0].id && <span style={{ fontSize: 11, color: "#a89a7e" }}>host</span>}
+          </div>
+        ))}
+        {Array.from({ length: state.maxPlayers - state.players.length }).map((_, i) => (
+          <div key={i} style={{ padding: "6px 10px", color: "#a89a7e", fontSize: 13 }}>Waiting for a player…</div>
+        ))}
+      </div>
+      {!isPlayer && <p style={{ fontSize: 13, color: "var(--bad)" }}>You're not in this game.</p>}
+      {isHost && state.players.length < state.maxPlayers && (
+        <Btn
+          variant="ghost"
+          small
+          onClick={() =>
+            mutate((s) => {
+              const usedNames = new Set(s.players.map((p) => p.name));
+              const name = BOT_NAMES.find((n) => !usedNames.has(n)) || `Bot ${s.players.length}`;
+              s.players.push(makePlayer("bot_" + uid(8), name, PLAYER_COLORS[s.players.length % PLAYER_COLORS.length], true));
+              addLog(s, `${name} (AI) joined.`);
+              return s;
+            })
+          }
+        >
+          Add AI player
+        </Btn>
+      )}
+      {isHost ? (
+        <div style={{ marginTop: 10 }}>
+          <Btn
+            disabled={state.players.length < 3}
+            onClick={() =>
+              mutate((s) => {
+                s.turnOrder = shuffle(s.players.map((p) => p.id));
+                s.phase = "setup";
+                s.currentIndex = 0;
+                addLog(s, `Game started. ${s.players.find((p) => p.id === s.turnOrder[0]).name} places first.`);
+                return s;
+              })
+            }
+          >
+            {state.players.length < 3 ? "Need at least 3 players" : "Start game"}
+          </Btn>
+        </div>
+      ) : (
+        <p style={{ fontSize: 13, color: "#d9cba4" }}>Waiting for the host to start the game…</p>
+      )}
+      </div>
+    </div>
+  );
+}
+
+/* ============================== MAIN BOARD VIEW =========================== */
+
+function Board({ state, mutate, clientId, code, onLeave, error }) {
+  const [zoom, setZoom] = useState(1);
+  const [selectedTrade, setSelectedTrade] = useState(false);
+  const [selectedDev, setSelectedDev] = useState(false);
+  const [buildMode, setBuildMode] = useState(null); // 'road' | 'settlement' | 'city'
+  const [pendingYearOfPlenty, setPendingYearOfPlenty] = useState(false);
+  const [pendingMonopoly, setPendingMonopoly] = useState(false);
+  const [pendingRoadBuilding, setPendingRoadBuilding] = useState(0);
+  const [nowTick, setNowTick] = useState(Date.now());
+  const [flyingCards, setFlyingCards] = useState([]);
+  const wrapperRef = useRef(null);
+  const lastGainsSeqRef = useRef(null);
+
+  useEffect(() => {
+    const id = setInterval(() => setNowTick(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    if (!state?.options?.turnTimerSec) return;
+    const id = setInterval(() => {
+      const action = findTimeoutAction(state);
+      if (action) mutate((s) => applyTimeoutAction(s, action));
+    }, 1000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state]);
+
+  function spawnFlyingCard(resource, hexId) {
+    const wrap = wrapperRef.current;
+    const hexEl = document.getElementById(`hex-${hexId}`);
+    const trayEl = document.getElementById(`restray-${resource}`);
+    if (!wrap || !hexEl || !trayEl) return;
+    const wrapRect = wrap.getBoundingClientRect();
+    const hr = hexEl.getBoundingClientRect();
+    const tr = trayEl.getBoundingClientRect();
+    const cardId = uid(8);
+    const start = { x: hr.left + hr.width / 2 - wrapRect.left, y: hr.top + hr.height / 2 - wrapRect.top };
+    const end = { x: tr.left + tr.width / 2 - wrapRect.left, y: tr.top + tr.height / 2 - wrapRect.top };
+    setFlyingCards((fc) => [...fc, { id: cardId, icon: RES_ICON[resource], x: start.x, y: start.y, opacity: 0 }]);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setFlyingCards((fc) => fc.map((c) => (c.id === cardId ? { ...c, x: end.x, y: end.y, opacity: 1 } : c)));
+      });
+    });
+    setTimeout(() => {
+      setFlyingCards((fc) => fc.filter((c) => c.id !== cardId));
+    }, 700);
+  }
+
+  useEffect(() => {
+    const gains = state.lastGains || [];
+    if (lastGainsSeqRef.current === null) {
+      lastGainsSeqRef.current = gains.length ? Math.max(...gains.map((g) => g.seq)) : 0;
+      return;
+    }
+    const mine = gains.filter((g) => g.seq > lastGainsSeqRef.current && g.playerId === clientId);
+    mine.forEach((g, idx) => setTimeout(() => spawnFlyingCard(g.resource, g.hexId), idx * 90));
+    if (gains.length) lastGainsSeqRef.current = Math.max(lastGainsSeqRef.current, ...gains.map((g) => g.seq));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.lastGains]);
+
+  const me = state.players.find((p) => p.id === clientId);
+  const currentPlayerId = state.phase === "setup" ? state.turnOrder[state.currentIndex] : state.turnOrder[state.currentIndex];
+  const isMyTurn = currentPlayerId === clientId;
+  const board = state.board;
+
+  const needsDiscard = state.pendingDiscards && state.pendingDiscards[clientId] > 0;
+  const needsRobberMove = state.robberMoveRequired === clientId;
+  const needsStealChoice = state.robberStealChoices && isMyTurn;
+
+  const xs = board.vertices.map((v) => v.x);
+  const ys = board.vertices.map((v) => v.y);
+  const pad = 40;
+  const minX = Math.min(...xs) - pad,
+    maxX = Math.max(...xs) + pad;
+  const minY = Math.min(...ys) - pad,
+    maxY = Math.max(...ys) + pad;
+  const vbW = maxX - minX,
+    vbH = maxY - minY;
+
+  function doMutate(fn) {
+    mutate(fn);
+  }
+
+  function handleVertexClick(vid) {
+    if (state.phase === "setup") {
+      if (!isMyTurn) return;
+      doMutate((s) => setupPlaceSettlement(s, clientId, vid));
+      return;
+    }
+    if (!isMyTurn || state.turnPhase !== "main") return;
+    if (buildMode === "settlement") {
+      if (!isValidSettlementSpot(board, vid, clientId, true)) return;
+      doMutate((s) => buildSettlement(s, clientId, vid));
+      setBuildMode(null);
+    } else if (buildMode === "city") {
+      const b = buildingAt(board, vid);
+      if (!b || b.owner !== clientId || b.type !== "settlement") return;
+      doMutate((s) => buildCity(s, clientId, vid));
+      setBuildMode(null);
+    }
+  }
+  function handleEdgeClick(eid) {
+    if (state.phase === "setup") {
+      if (!isMyTurn) return;
+      doMutate((s) => setupPlaceRoad(s, clientId, eid));
+      return;
+    }
+    if (!isMyTurn) return;
+    if (pendingRoadBuilding > 0) {
+      if (!isValidRoadSpot(board, eid, clientId)) return;
+      doMutate((s) => {
+        s.board.roads[eid] = clientId;
+        recalcLongestRoad(s);
+        checkWinner(s);
+        addLog(s, `${playerName(s, clientId)} placed a free road.`);
+        return s;
+      });
+      setPendingRoadBuilding((n) => n - 1);
+      return;
+    }
+    if (state.turnPhase !== "main" || buildMode !== "road") return;
+    if (!isValidRoadSpot(board, eid, clientId)) return;
+    doMutate((s) => buildRoad(s, clientId, eid));
+    setBuildMode(null);
+  }
+  function handleHexClick(hexId) {
+    if (needsRobberMove && hexId !== board.robberHexId) {
+      doMutate((s) => moveRobber(s, clientId, hexId));
+    }
+  }
+
+  const sig = botSignature(state);
+  useEffect(() => {
+    const action = findBotAction(state);
+    if (!action) return;
+    const delay = 900 + Math.random() * 1600;
+    const timer = setTimeout(() => {
+      mutate((s) => applyBotAction(s, action));
+    }, delay);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sig]);
+
+  return (
+    <div ref={wrapperRef} className="lf-game-grid">
+      {flyingCards.map((c) => (
+        <div
+          key={c.id}
+          style={{
+            position: "absolute",
+            left: 0,
+            top: 0,
+            zIndex: 40,
+            pointerEvents: "none",
+            transform: `translate(${c.x - 15}px, ${c.y - 21}px)`,
+            transition: "transform 0.55s cubic-bezier(.2,.8,.3,1), opacity 0.55s",
+            opacity: c.opacity,
+            width: 30,
+            height: 42,
+            borderRadius: 6,
+            background: "linear-gradient(160deg, #fdf6e3, #e6d5a1)",
+            border: "1.5px solid #4a3220",
+            boxShadow: "0 3px 8px rgba(0,0,0,.45)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 17,
+          }}
+        >
+          {c.icon}
+        </div>
+      ))}
+
+      <div className="lf-area-topbar">
+        <TopBar state={state} clientId={clientId} code={code} onLeave={onLeave} me={me} nowTick={nowTick} />
+      </div>
+
+      <div className="lf-area-board" style={{ background: "radial-gradient(ellipse at center, #11617a 0%, #0d3f55 55%, #0a3a50 100%)" }}>
+        <div style={{ position: "absolute", top: 8, right: 8, zIndex: 5, display: "flex", gap: 4 }}>
+          <Btn small variant="ghost" onClick={() => setZoom((z) => Math.min(2, z + 0.2))}>+</Btn>
+          <Btn small variant="ghost" onClick={() => setZoom((z) => Math.max(0.5, z - 0.2))}>−</Btn>
+        </div>
+        <div className="lf-board-scroll">
+          <svg viewBox={`${minX} ${minY} ${vbW} ${vbH}`} style={{ display: "block", margin: "0 auto", width: `${100 * zoom}%`, height: "auto" }}>
+            <defs>
+              <radialGradient id="hexfill-wood" cx="35%" cy="30%" r="75%">
+                <stop offset="0%" stopColor="#4a9c50" />
+                <stop offset="100%" stopColor="#2f6f37" />
+              </radialGradient>
+              <radialGradient id="hexfill-brick" cx="35%" cy="30%" r="75%">
+                <stop offset="0%" stopColor="#c97b3a" />
+                <stop offset="100%" stopColor="#9c5a24" />
+              </radialGradient>
+              <radialGradient id="hexfill-sheep" cx="35%" cy="30%" r="75%">
+                <stop offset="0%" stopColor="#a9cf5a" />
+                <stop offset="100%" stopColor="#82a93f" />
+              </radialGradient>
+              <radialGradient id="hexfill-wheat" cx="35%" cy="30%" r="75%">
+                <stop offset="0%" stopColor="#eec64f" />
+                <stop offset="100%" stopColor="#c89f2c" />
+              </radialGradient>
+              <radialGradient id="hexfill-ore" cx="35%" cy="30%" r="75%">
+                <stop offset="0%" stopColor="#8f9aa8" />
+                <stop offset="100%" stopColor="#6a7480" />
+              </radialGradient>
+              <radialGradient id="hexfill-desert" cx="35%" cy="30%" r="75%">
+                <stop offset="0%" stopColor="#ecd9a6" />
+                <stop offset="100%" stopColor="#c9b072" />
+              </radialGradient>
+              <radialGradient id="hexfill-sea" cx="35%" cy="30%" r="75%">
+                <stop offset="0%" stopColor="#17718f" />
+                <stop offset="100%" stopColor="#0d4c63" />
+              </radialGradient>
+              <radialGradient id="hexfill-gold" cx="35%" cy="30%" r="75%">
+                <stop offset="0%" stopColor="#e6c35c" />
+                <stop offset="100%" stopColor="#c49a2e" />
+              </radialGradient>
+              <radialGradient id="tokenFace" cx="35%" cy="30%" r="75%">
+                <stop offset="0%" stopColor="#fdf6e3" />
+                <stop offset="100%" stopColor="#eeddb3" />
+              </radialGradient>
+            </defs>
+            {board.hexes.map((h) => (
+              <HexTile key={h.id} hex={h} isRobber={board.robberHexId === h.id} onClick={() => handleHexClick(h.id)} clickable={needsRobberMove} />
+            ))}
+            {board.ports.map((p, i) => {
+              const v1 = board.vertices.find((v) => v.id === p.vertexIds[0]);
+              const v2 = board.vertices.find((v) => v.id === p.vertexIds[1]);
+              const mx = (v1.x + v2.x) / 2,
+                my = (v1.y + v2.y) / 2;
+              const ratio = p.type === "3:1" ? "3:1" : "2:1";
+              return (
+                <g key={i}>
+                  <line x1={v1.x} y1={v1.y} x2={mx} y2={my} stroke="#7a6a4a" strokeWidth={1.5} strokeDasharray="2,2" />
+                  <line x1={v2.x} y1={v2.y} x2={mx} y2={my} stroke="#7a6a4a" strokeWidth={1.5} strokeDasharray="2,2" />
+                  <polygon
+                    points={`${mx},${my - 15} ${mx + 14},${my + 9} ${mx - 14},${my + 9}`}
+                    fill="#f7edd0"
+                    stroke="#4a3220"
+                    strokeWidth={1.5}
+                  />
+                  <text x={mx} y={my - 1} fontSize={10} textAnchor="middle" fill="#4a3220">
+                    {p.type === "3:1" ? "⚓" : RES_ICON[p.type]}
+                  </text>
+                  <text x={mx} y={my + 7} fontSize={7} textAnchor="middle" fontWeight={800} fill="#4a3220">
+                    {ratio}
+                  </text>
+                </g>
+              );
+            })}
+            {board.edges.map((e) => {
+              const v1 = board.vertices.find((v) => v.id === e.v1);
+              const v2 = board.vertices.find((v) => v.id === e.v2);
+              const owner = roadOwnerAt(board, e.id);
+              const ownerColor = owner ? state.players.find((p) => p.id === owner)?.color : null;
+              const active =
+                (state.phase === "setup" && isMyTurn && state.setupAwaitingRoad) ||
+                (buildMode === "road" && isMyTurn && state.turnPhase === "main") ||
+                (pendingRoadBuilding > 0 && isMyTurn);
+              const valid = active && isValidRoadSpotOrSetup(state, board, e.id, clientId);
+              return (
+                <g key={e.id}>
+                  {valid && (
+                    <line
+                      x1={v1.x}
+                      y1={v1.y}
+                      x2={v2.x}
+                      y2={v2.y}
+                      stroke="transparent"
+                      strokeWidth={26}
+                      strokeLinecap="round"
+                      style={{ cursor: "pointer" }}
+                      onClick={() => handleEdgeClick(e.id)}
+                    />
+                  )}
+                  {ownerColor && (
+                    <line x1={v1.x} y1={v1.y} x2={v2.x} y2={v2.y} stroke="#1c1610" strokeWidth={8.5} strokeLinecap="round" />
+                  )}
+                  <line
+                    x1={v1.x}
+                    y1={v1.y}
+                    x2={v2.x}
+                    y2={v2.y}
+                    stroke={ownerColor || (valid ? "#b5502d" : "rgba(40,32,20,0.28)")}
+                    strokeWidth={ownerColor ? 6 : valid ? 5 : 2.5}
+                    strokeLinecap="round"
+                    style={{ pointerEvents: "none" }}
+                  />
+                </g>
+              );
+            })}
+            {board.vertices.map((v) => {
+              const b = buildingAt(board, v.id);
+              const active =
+                (state.phase === "setup" && isMyTurn && !state.setupAwaitingRoad) ||
+                ((buildMode === "settlement" || buildMode === "city") && isMyTurn && state.turnPhase === "main");
+              const requireRoad = state.phase !== "setup";
+              let valid = false;
+              if (active) {
+                if (buildMode === "city") valid = b && b.owner === clientId && b.type === "settlement";
+                else valid = isValidSettlementSpot(board, v.id, clientId, requireRoad);
+              }
+              const ownerColor = b ? state.players.find((p) => p.id === b.owner)?.color : null;
+              return (
+                <g key={v.id}>
+                  {valid && (
+                    <circle cx={v.x} cy={v.y} r={20} fill="transparent" style={{ cursor: "pointer" }} onClick={() => handleVertexClick(v.id)} />
+                  )}
+                  {valid && !b && <circle cx={v.x} cy={v.y} r={8} fill="rgba(181,80,45,0.4)" stroke="#b5502d" strokeWidth={1.5} style={{ pointerEvents: "none" }} />}
+                  {b && <BuildingIcon x={v.x} y={v.y} type={b.type} color={ownerColor} />}
+                  {valid && b && <circle cx={v.x} cy={v.y} r={11} fill="none" stroke="#b5502d" strokeWidth={2} strokeDasharray="3,2" style={{ pointerEvents: "none" }} />}
+                </g>
+              );
+            })}
+          </svg>
+        </div>
+      </div>
+
+      <div className="lf-area-actions">
+        <ActionBar
+          state={state}
+          clientId={clientId}
+          isMyTurn={isMyTurn}
+          needsDiscard={needsDiscard}
+          needsRobberMove={needsRobberMove}
+          pendingRoadBuilding={pendingRoadBuilding}
+          mutate={mutate}
+        />
+      </div>
+
+      <div className="lf-area-sidebar">
+        <SidePanel
+          state={state}
+          clientId={clientId}
+          me={me}
+          isMyTurn={isMyTurn}
+          buildMode={buildMode}
+          setBuildMode={setBuildMode}
+          mutate={mutate}
+          setSelectedTrade={setSelectedTrade}
+          setSelectedDev={setSelectedDev}
+          pendingRoadBuilding={pendingRoadBuilding}
+          nowTick={nowTick}
+        />
+      </div>
+
+      {needsDiscard && (
+        <DiscardModal state={state} clientId={clientId} me={me} mutate={mutate} count={state.pendingDiscards[clientId]} />
+      )}
+      {needsStealChoice && (
+        <StealModal state={state} clientId={clientId} mutate={mutate} />
+      )}
+      {selectedTrade && (
+        <TradeModal state={state} clientId={clientId} me={me} mutate={mutate} onClose={() => setSelectedTrade(false)} />
+      )}
+      {selectedDev && (
+        <DevCardModal
+          state={state}
+          clientId={clientId}
+          me={me}
+          mutate={mutate}
+          onClose={() => setSelectedDev(false)}
+          onRoadBuilding={() => setPendingRoadBuilding(2)}
+        />
+      )}
+    </div>
+  );
+}
+
+function ActionBar({ state, clientId, isMyTurn, needsDiscard, needsRobberMove, pendingRoadBuilding, mutate }) {
+  if (state.winner) {
+    return (
+      <div className="lf-actionbar accent">
+        🏆 {playerName(state, state.winner)} wins with {state.options?.winVp ?? DEFAULT_OPTIONS.winVp}+ victory points!
+      </div>
+    );
+  }
+  if (state.phase === "setup") {
+    if (!isMyTurn) return <div className="lf-actionbar">Waiting for {playerName(state, state.turnOrder[state.currentIndex])}…</div>;
+    return <div className="lf-actionbar">{state.setupAwaitingRoad ? "Now place a connecting road." : "Place your settlement."}</div>;
+  }
+  if (needsRobberMove && !state.robberStealChoices) {
+    return <div className="lf-actionbar">Choose a hex to move the marauder to.</div>;
+  }
+  if (!isMyTurn) {
+    return <div className="lf-actionbar">Waiting for {playerName(state, state.turnOrder[state.currentIndex])}…</div>;
+  }
+  if (needsDiscard) return <div className="lf-actionbar">Discard cards to continue…</div>;
+  if (pendingRoadBuilding > 0) {
+    return <div className="lf-actionbar">Place {pendingRoadBuilding} free road{pendingRoadBuilding > 1 ? "s" : ""} on the board.</div>;
+  }
+  if (state.turnPhase === "roll") {
+    return (
+      <div className="lf-actionbar">
+        <Btn onClick={() => mutate((s) => rollDice(s, clientId))}>🎲 Roll dice</Btn>
+      </div>
+    );
+  }
+  return (
+    <div className="lf-actionbar">
+      <Btn
+        variant="accent"
+        onClick={() =>
+          mutate((s) => {
+            endTurn(s);
+            return s;
+          })
+        }
+      >
+        End turn
+      </Btn>
+    </div>
+  );
+}
+
+function isValidRoadSpotOrSetup(state, board, edgeId, clientId) {
+  if (state.phase === "setup") {
+    if (roadOwnerAt(board, edgeId)) return false;
+    const edge = board.edges.find((e) => e.id === edgeId);
+    const lastVid = state.lastSetupSettlement;
+    return lastVid && (edge.v1 === lastVid || edge.v2 === lastVid);
+  }
+  return isValidRoadSpot(board, edgeId, clientId);
+}
+
+function HexTile({ hex, isRobber, onClick, clickable }) {
+  const corners = hexCorners(hex.cx, hex.cy, hex.size);
+  const points = corners.map((c) => `${c.x},${c.y}`).join(" ");
+  const dots = DOTS[hex.number] || 0;
+  const dotSpacing = 4.2;
+  const dotStartX = hex.cx - ((dots - 1) * dotSpacing) / 2;
+  return (
+    <g id={`hex-${hex.id}`} onClick={onClick} style={{ cursor: clickable ? "pointer" : "default" }}>
+      <polygon
+        points={points}
+        fill={`url(#hexfill-${hex.resource})`}
+        stroke="#241c12"
+        strokeWidth={1.5}
+        opacity={clickable ? 0.8 : 1}
+      />
+      <polygon points={points} fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth={1} />
+      {hex.resource === "gold" && (
+        <text x={hex.cx} y={hex.cy - hex.size * 0.42} textAnchor="middle" fontSize={13}>💰</text>
+      )}
+      {hex.resource === "sea" && (
+        <text x={hex.cx} y={hex.cy + hex.size * 0.1} textAnchor="middle" fontSize={hex.size * 0.4} opacity={0.5}>〜</text>
+      )}
+      {hex.number && (
+        <g>
+          <circle cx={hex.cx} cy={hex.cy} r={14} fill="url(#tokenFace)" stroke="#241c12" strokeWidth={1.2} />
+          <text
+            x={hex.cx}
+            y={hex.cy + 4.5}
+            textAnchor="middle"
+            fontFamily="'Fraunces', serif"
+            fontSize={14}
+            fontWeight={700}
+            fill={hex.number === 6 || hex.number === 8 ? "#b33a2e" : "#40301c"}
+          >
+            {hex.number}
+          </text>
+          {Array.from({ length: dots }).map((_, i) => (
+            <circle
+              key={i}
+              cx={dotStartX + i * dotSpacing}
+              cy={hex.cy + 11.5}
+              r={1.1}
+              fill={hex.number === 6 || hex.number === 8 ? "#b33a2e" : "#8a6d3b"}
+            />
+          ))}
+        </g>
+      )}
+      {isRobber && <RobberIcon cx={hex.cx} cy={hex.cy - (hex.number ? 24 : 0)} />}
+    </g>
+  );
+}
+
+function RobberIcon({ cx, cy }) {
+  return (
+    <g>
+      <ellipse cx={cx} cy={cy + 7} rx={7} ry={3} fill="rgba(0,0,0,0.25)" />
+      <path d={`M ${cx - 6} ${cy + 7} Q ${cx - 6} ${cy - 3} ${cx} ${cy - 3} Q ${cx + 6} ${cy - 3} ${cx + 6} ${cy + 7} Z`} fill="#241c12" />
+      <circle cx={cx} cy={cy - 7} r={4.5} fill="#241c12" />
+      <path d={`M ${cx - 5} ${cy - 9} Q ${cx} ${cy - 15} ${cx + 5} ${cy - 9} Z`} fill="#241c12" />
+    </g>
+  );
+}
+
+function BuildingIcon({ x, y, type, color }) {
+  if (type === "city") {
+    return (
+      <g>
+        <rect x={x - 3} y={y - 5} width={7} height={9} fill={color} stroke="#1a140d" strokeWidth={1} />
+        <path
+          d={`M ${x - 10} ${y + 8} L ${x - 10} ${y - 1} L ${x - 4} ${y - 7} L ${x + 3} ${y - 1} L ${x + 3} ${y + 8} Z`}
+          fill={color}
+          stroke="#1a140d"
+          strokeWidth={1.2}
+        />
+        <rect x={x - 9} y={y + 8} width={12} height={1.6} fill="#1a140d" opacity={0.35} />
+      </g>
+    );
+  }
+  return (
+    <path
+      d={`M ${x - 6.5} ${y + 6.5} L ${x - 6.5} ${y - 1} L ${x} ${y - 7.5} L ${x + 6.5} ${y - 1} L ${x + 6.5} ${y + 6.5} Z`}
+      fill={color}
+      stroke="#1a140d"
+      strokeWidth={1.2}
+    />
+  );
+}
+
+function Banner({ children, accent }) {
+  return (
+    <div
+      style={{
+        padding: "10px 16px",
+        background: accent ? "linear-gradient(180deg, #d9a437, #b57e20)" : "var(--panel2)",
+        borderTop: accent ? "1px solid #f2d27a" : "1px solid rgba(255,255,255,0.14)",
+        color: accent ? "#3a2a0a" : "#f7edd3",
+        fontSize: 14,
+        fontWeight: 700,
+        textAlign: "center",
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function playerName(state, id) {
+  return state.players.find((p) => p.id === id)?.name || "Someone";
+}
+
+/* ============================== TOP BAR & SIDE PANEL ======================= */
+
+function DiceFace({ value, small }) {
+  const pipLayouts = {
+    1: [[50, 50]],
+    2: [[28, 28], [72, 72]],
+    3: [[28, 28], [50, 50], [72, 72]],
+    4: [[28, 28], [28, 72], [72, 28], [72, 72]],
+    5: [[28, 28], [28, 72], [50, 50], [72, 28], [72, 72]],
+    6: [[28, 25], [28, 50], [28, 75], [72, 25], [72, 50], [72, 75]],
+  };
+  const s2 = small ? 22 : 30;
+  return (
+    <svg width={s2} height={s2} viewBox="0 0 100 100">
+      <rect x="4" y="4" width="92" height="92" rx="16" fill="#f7edd3" stroke="#2a2015" strokeWidth="4" />
+      <rect x="4" y="70" width="92" height="26" rx="10" fill="rgba(0,0,0,0.12)" />
+      {(pipLayouts[value] || []).map(([cx, cy], i) => (
+        <circle key={i} cx={cx} cy={cy} r="9" fill="#3a2a0a" />
+      ))}
+    </svg>
+  );
+}
+
+function PlayerChip({ p, isCurrent, vp, timerLabel }) {
+  const initials = p.name.slice(0, 2).toUpperCase();
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        flexShrink: 0,
+        whiteSpace: "nowrap",
+        padding: "4px 9px 4px 4px",
+        borderRadius: 20,
+        background: isCurrent ? "rgba(232,182,76,0.22)" : "rgba(0,0,0,0.25)",
+        border: isCurrent ? "1.5px solid var(--gold)" : "1px solid rgba(255,255,255,0.14)",
+        boxShadow: isCurrent ? "0 1px 6px rgba(232,182,76,0.3)" : "none",
+      }}
+    >
+      <span
+        style={{
+          width: 22,
+          height: 22,
+          borderRadius: "50%",
+          background: p.color,
+          color: "#fff",
+          fontSize: 9,
+          fontWeight: 700,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          border: "1px solid rgba(0,0,0,0.4)",
+        }}
+      >
+        {initials}
+      </span>
+      <span style={{ fontSize: 12, fontWeight: isCurrent ? 700 : 500, color: "#f7edd3" }}>
+        {p.name}
+        {p.isBot ? " · AI" : ""}
+      </span>
+      <span style={{ fontSize: 11, color: "#d9cba4", display: "flex", gap: 4 }}>
+        <span title="resource cards">🂠{totalCards(p.resources)}</span>
+        <span title="dev cards">🎴{p.devCards.length}</span>
+        <span title="victory points" style={{ fontWeight: 700, color: "var(--gold)" }}>★{vp}</span>
+      </span>
+      {isCurrent && timerLabel && (
+        <span style={{ fontSize: 11, fontWeight: 700, color: "var(--gold)" }}>⏱{timerLabel}</span>
+      )}
+    </div>
+  );
+}
+
+function TopBar({ state, clientId, code, onLeave, me, nowTick }) {
+  const timerSec = state.options?.turnTimerSec || 0;
+  let timerLabel = null;
+  if (timerSec && state.phase === "playing" && !state.winner) {
+    const remaining = Math.max(0, timerSec - Math.floor(((nowTick || Date.now()) - (state.turnStartedAt || nowTick)) / 1000));
+    timerLabel = `${remaining}s`;
+  }
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 12px", background: "var(--panel)", borderBottom: "1px solid rgba(255,255,255,0.12)", gap: 8, minWidth: 0 }}>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", minWidth: 0 }}>
+        <span style={{ fontWeight: 800, color: "var(--gold)", letterSpacing: 1, flexShrink: 0 }}>LANDFALL</span>
+        <span style={{ fontSize: 12, color: "#a89a7e", flexShrink: 0 }}>#{code}</span>
+      </div>
+      {timerLabel && <span style={{ fontSize: 13, fontWeight: 700, color: "var(--gold)" }}>⏱ {timerLabel}</span>}
+      <Btn small variant="ghost" onClick={onLeave}>Exit</Btn>
+    </div>
+  );
+}
+
+function SidePanel({ state, clientId, me, isMyTurn, buildMode, setBuildMode, mutate, setSelectedTrade, setSelectedDev, pendingRoadBuilding, nowTick }) {
+  if (!me) return null;
+  const canMain = isMyTurn && state.phase === "playing" && state.turnPhase === "main" && pendingRoadBuilding === 0;
+  const currentId = state.turnOrder[state.currentIndex];
+  const timerSec = state.options?.turnTimerSec || 0;
+  let timerLabel = null;
+  if (timerSec && state.phase === "playing" && !state.winner) {
+    const remaining = Math.max(0, timerSec - Math.floor(((nowTick || Date.now()) - (state.turnStartedAt || nowTick)) / 1000));
+    timerLabel = `${remaining}s`;
+  }
+  return (
+    <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 12, flex: 1, minHeight: 0 }}>
+      <div className="card">
+        <h4 style={hTitle}>Players</h4>
+        <div className="lf-sidebar-players">
+          {state.players.map((p) => (
+            <PlayerListRow key={p.id} p={p} isCurrent={p.id === currentId} vp={computeVictoryPoints(state, p)} timerLabel={p.id === currentId ? timerLabel : null} />
+          ))}
+        </div>
+      </div>
+
+      {state.diceRoll && (
+        <div className="card" style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+          <DiceFace value={state.diceRoll[0]} />
+          <DiceFace value={state.diceRoll[1]} />
+          <span style={{ fontSize: 22, fontWeight: 800, color: "var(--gold)" }}>= {state.diceRoll[0] + state.diceRoll[1]}</span>
+        </div>
+      )}
+
+      <div className="card">
+        <h4 style={hTitle}>Resources</h4>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6 }}>
+          {RES.map((r) => (
+            <div
+              key={r}
+              id={`restray-${r}`}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                background: "linear-gradient(180deg, #5a4023, #3d2b17)",
+                border: "1px solid #8a6a3a",
+                borderRadius: 10,
+                padding: "6px 2px",
+              }}
+            >
+              <span style={{ fontSize: 18 }}>{RES_ICON[r]}</span>
+              <span style={{ fontWeight: 800, fontSize: 15, color: "#fff" }}>{me.resources[r]}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {state.phase === "playing" && (
+        <div>
+          <h4 style={hTitle}>Build</h4>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <BuildButton
+              label="Road"
+              costIcons="🌲🧱"
+              active={buildMode === "road"}
+              disabled={!canMain || !canAfford(me.resources, COSTS.road)}
+              onClick={() => setBuildMode(buildMode === "road" ? null : "road")}
+            />
+            <BuildButton
+              label="Settlement"
+              costIcons="🌲🧱🌾🐑"
+              active={buildMode === "settlement"}
+              disabled={!canMain || !canAfford(me.resources, COSTS.settlement)}
+              onClick={() => setBuildMode(buildMode === "settlement" ? null : "settlement")}
+            />
+            <BuildButton
+              label="City"
+              costIcons="🌾🌾⛰️⛰️⛰️"
+              active={buildMode === "city"}
+              disabled={!canMain || !canAfford(me.resources, COSTS.city)}
+              onClick={() => setBuildMode(buildMode === "city" ? null : "city")}
+            />
+            <BuildButton
+              label={`Dev card (${state.devDeck.length} left)`}
+              costIcons="🌾🐑⛰️"
+              active={false}
+              disabled={!canMain || !canAfford(me.resources, COSTS.dev) || state.devDeck.length === 0}
+              onClick={() =>
+                mutate((s) => {
+                  const p = s.players.find((pl) => pl.id === clientId);
+                  p.resources = payCost(p.resources, COSTS.dev);
+                  Object.entries(COSTS.dev).forEach(([r, n]) => (s.bank[r] += n));
+                  const card = s.devDeck.pop();
+                  p.devCards.push({ type: card, turnBought: s.turnCounter });
+                  addLog(s, `${p.name} bought a development card.`);
+                  return s;
+                })
+              }
+            />
+          </div>
+        </div>
+      )}
+
+      {state.phase === "playing" && (
+        <div>
+          <h4 style={hTitle}>Trade & cards</h4>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <Btn small variant="ghost" disabled={!canMain} onClick={() => setSelectedTrade(true)}>Trade</Btn>
+            <Btn small variant="ghost" disabled={!isMyTurn} onClick={() => setSelectedDev(true)}>
+              Dev cards ({me.devCards.length})
+            </Btn>
+          </div>
+        </div>
+      )}
+
+      {state.phase === "playing" && (
+        <div style={{ fontSize: 12, color: "#d9cba4" }}>
+          <div>Longest road: {state.longestRoad.playerId ? `${playerName(state, state.longestRoad.playerId)} (${state.longestRoad.length})` : "—"}</div>
+          <div>Largest army: {state.largestArmy.playerId ? `${playerName(state, state.largestArmy.playerId)} (${state.largestArmy.count})` : "—"}</div>
+        </div>
+      )}
+
+      <div className="lf-sidebar-log">
+        <h4 style={hTitle}>Log</h4>
+        <LogStrip state={state} />
+      </div>
+    </div>
+  );
+}
+const hTitle = { fontSize: 12, letterSpacing: 1.5, textTransform: "uppercase", color: "var(--gold)", margin: "0 0 6px", fontWeight: 700 };
+
+function PlayerListRow({ p, isCurrent, vp, timerLabel }) {
+  const initials = p.name.slice(0, 2).toUpperCase();
+  return (
+    <div
+      style={{
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        padding: "6px 8px",
+        borderRadius: 10,
+        background: isCurrent ? "rgba(232,182,76,0.18)" : "rgba(0,0,0,0.22)",
+        border: isCurrent ? "1.5px solid var(--gold)" : "1px solid rgba(255,255,255,0.1)",
+      }}
+    >
+      <span
+        style={{
+          width: 26,
+          height: 26,
+          borderRadius: "50%",
+          background: p.color,
+          color: "#fff",
+          fontSize: 10,
+          fontWeight: 700,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          border: "1px solid rgba(0,0,0,0.4)",
+          flexShrink: 0,
+        }}
+      >
+        {initials}
+      </span>
+      <span style={{ fontSize: 13, fontWeight: isCurrent ? 700 : 500, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+        {p.name}
+        {p.isBot ? " · AI" : ""}
+      </span>
+      <span style={{ fontSize: 11, color: "#d9cba4", display: "flex", gap: 6, flexShrink: 0 }}>
+        <span title="resource cards">🂠{totalCards(p.resources)}</span>
+        <span title="dev cards">🎴{p.devCards.length}</span>
+        <span title="victory points" style={{ fontWeight: 700, color: "var(--gold)" }}>★{vp}</span>
+      </span>
+      {isCurrent && timerLabel && <span style={{ fontSize: 11, fontWeight: 700, color: "var(--gold)", flexShrink: 0 }}>⏱{timerLabel}</span>}
+    </div>
+  );
+}
+
+function BuildButton({ label, costIcons, active, disabled, onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        textAlign: "left",
+        padding: "8px 10px",
+        borderRadius: 8,
+        border: active ? "2px solid var(--gold)" : "1px solid rgba(255,255,255,0.16)",
+        background: active ? "rgba(232,182,76,0.2)" : "rgba(0,0,0,0.28)",
+        color: "#f7edd3",
+        fontSize: 13,
+        fontWeight: 600,
+      }}
+    >
+      <span>{label}</span>
+      {costIcons && <span style={{ fontSize: 13, letterSpacing: -1 }}>{costIcons}</span>}
+    </button>
+  );
+}
+
+function LogStrip({ state }) {
+  return (
+    <div style={{ background: "rgba(0,0,0,0.28)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#cdbf9c", fontSize: 12, padding: "8px 10px", maxHeight: 220, overflowY: "auto" }}>
+      {state.log
+        .slice(-40)
+        .reverse()
+        .map((l, i) => (
+          <div
+            key={i}
+            style={{
+              padding: "3px 0",
+              borderBottom: "1px dashed rgba(255,255,255,0.08)",
+              color: l.msg.includes("'s turn.") ? "var(--gold)" : "#cdbf9c",
+              fontWeight: l.msg.includes("'s turn.") ? 700 : 400,
+            }}
+          >
+            {l.msg}
+          </div>
+        ))}
+    </div>
+  );
+}
+
+/* ============================== MODALS ==================================== */
+
+function ModalWrap({ children, onClose }) {
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 50, padding: 16 }}>
+      <div
+        style={{
+          position: "relative",
+          background: "linear-gradient(160deg, rgba(56,39,22,0.97), rgba(38,26,15,0.98))",
+          border: "2px solid #9a6b33",
+          borderRadius: 16,
+          boxShadow: "0 18px 50px rgba(0,0,0,0.55)",
+          padding: 20,
+          maxWidth: 380,
+          width: "100%",
+          maxHeight: "80vh",
+          overflowY: "auto",
+          color: "#f7edd3",
+        }}
+      >
+        {onClose && (
+          <button onClick={onClose} style={{ position: "absolute", top: 10, right: 12, background: "none", border: "none", color: "#e8d9a8", fontSize: 22 }}>✕</button>
+        )}
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function DiscardModal({ state, clientId, me, mutate, count }) {
+  const [picked, setPicked] = useState(emptyResources());
+  const pickedTotal = totalCards(picked);
+  return (
+    <ModalWrap>
+      <h4 style={{ marginTop: 0, color: "var(--gold)" }}>Discard {count} cards</h4>
+      <p style={{ fontSize: 13, color: "#d9cba4" }}>The bandits are near — you have too many cards.</p>
+      {RES.map((r) => (
+        <div key={r} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+          <span style={{ width: 60 }}>{RES_ICON[r]} {me.resources[r]}</span>
+          <button disabled={picked[r] <= 0} onClick={() => setPicked((p) => ({ ...p, [r]: p[r] - 1 }))} style={stepBtn}>−</button>
+          <span style={{ width: 20, textAlign: "center" }}>{picked[r]}</span>
+          <button disabled={picked[r] >= me.resources[r] || pickedTotal >= count} onClick={() => setPicked((p) => ({ ...p, [r]: p[r] + 1 }))} style={stepBtn}>+</button>
+        </div>
+      ))}
+      <Btn
+        disabled={pickedTotal !== count}
+        onClick={() =>
+          mutate((s) => {
+            const p = s.players.find((pl) => pl.id === clientId);
+            RES.forEach((r) => {
+              p.resources[r] -= picked[r];
+              s.bank[r] += picked[r];
+            });
+            delete s.pendingDiscards[clientId];
+            addLog(s, `${p.name} discarded ${count} cards.`);
+            maybeStartRobberMove(s);
+            return s;
+          })
+        }
+      >
+        Discard {pickedTotal}/{count}
+      </Btn>
+    </ModalWrap>
+  );
+}
+const stepBtn = { width: 26, height: 26, borderRadius: 6, border: "1px solid #8a7a55", background: "rgba(0,0,0,0.3)", color: "#f7edd3" };
+
+function StealModal({ state, clientId, mutate }) {
+  const choices = state.robberStealChoices || [];
+  return (
+    <ModalWrap>
+      <h4 style={{ marginTop: 0, color: "var(--gold)" }}>Steal from a neighbor</h4>
+      {choices.length === 0 ? (
+        <Btn onClick={() => mutate((s) => { s.robberStealChoices = null; return s; })}>Continue</Btn>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {choices.map((pid) => (
+            <Btn key={pid} variant="ghost" onClick={() => mutate((s) => resolveSteal(s, clientId, pid))}>
+              {playerName(state, pid)}
+            </Btn>
+          ))}
+        </div>
+      )}
+    </ModalWrap>
+  );
+}
+
+function TradeModal({ state, clientId, me, mutate, onClose }) {
+  const [give, setGive] = useState(RES[0]);
+  const [get, setGet] = useState(RES[1]);
+  const ratio = playerPortRatio(state.board, clientId, give);
+  const canBankTrade = me.resources[give] >= ratio && state.bank[get] > 0 && give !== get;
+
+  const [offerRes, setOfferRes] = useState(emptyResources());
+  const [wantRes, setWantRes] = useState(emptyResources());
+  const openOffer = state.tradeOffer;
+
+  return (
+    <ModalWrap onClose={onClose}>
+      <h4 style={{ marginTop: 0, color: "var(--gold)" }}>Trade</h4>
+
+      {openOffer && openOffer.from !== clientId && !openOffer.declinedBy.includes(clientId) && (
+        <div style={{ background: "rgba(232,182,76,0.15)", border: "1px solid var(--gold)", borderRadius: 8, padding: 10, marginBottom: 12, fontSize: 13 }}>
+          <b>{playerName(state, openOffer.from)}</b> offers{" "}
+          {RES.filter((r) => openOffer.give[r] > 0).map((r) => `${openOffer.give[r]}${RES_ICON[r]}`).join(" ")} for{" "}
+          {RES.filter((r) => openOffer.want[r] > 0).map((r) => `${openOffer.want[r]}${RES_ICON[r]}`).join(" ")}
+          <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+            <Btn
+              small
+              disabled={!RES.every((r) => me.resources[r] >= openOffer.want[r])}
+              onClick={() => mutate((s) => acceptTrade(s, clientId))}
+            >
+              Accept
+            </Btn>
+            <Btn small variant="ghost" onClick={() => mutate((s) => { s.tradeOffer.declinedBy.push(clientId); return s; })}>
+              Decline
+            </Btn>
+          </div>
+        </div>
+      )}
+
+      <h5 style={{ margin: "12px 0 6px", color: "#d9cba4" }}>Trade with the bank / a port</h5>
+      <div style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 13 }}>
+        <select value={give} onChange={(e) => setGive(e.target.value)} style={selectStyle}>
+          {RES.map((r) => <option key={r} value={r}>{ratio}× {RES_LABEL[r]}</option>)}
+        </select>
+        <span>→</span>
+        <select value={get} onChange={(e) => setGet(e.target.value)} style={selectStyle}>
+          {RES.map((r) => <option key={r} value={r}>1× {RES_LABEL[r]}</option>)}
+        </select>
+      </div>
+      <Btn
+        small
+        disabled={!canBankTrade}
+        onClick={() =>
+          mutate((s) => {
+            const p = s.players.find((pl) => pl.id === clientId);
+            p.resources[give] -= ratio;
+            s.bank[give] += ratio;
+            p.resources[get] += 1;
+            s.bank[get] -= 1;
+            addLog(s, `${p.name} traded ${ratio} ${RES_LABEL[give]} for 1 ${RES_LABEL[get]}.`);
+            return s;
+          })
+        }
+      >
+        Trade with bank
+      </Btn>
+
+      {state.turnOrder[state.currentIndex] === clientId && !openOffer && (
+        <>
+          <h5 style={{ margin: "16px 0 6px", color: "#d9cba4" }}>Offer a trade to other players</h5>
+          {RES.map((r) => (
+            <div key={r} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, marginBottom: 4 }}>
+              <span style={{ width: 56 }}>{RES_ICON[r]}</span>
+              <span style={{ width: 30 }}>Give</span>
+              <input type="number" min={0} max={me.resources[r]} value={offerRes[r]} onChange={(e) => setOfferRes((o) => ({ ...o, [r]: Math.max(0, Math.min(me.resources[r], Number(e.target.value))) }))} style={numInput} />
+              <span style={{ width: 32 }}>Want</span>
+              <input type="number" min={0} value={wantRes[r]} onChange={(e) => setWantRes((o) => ({ ...o, [r]: Math.max(0, Number(e.target.value)) }))} style={numInput} />
+            </div>
+          ))}
+          <Btn
+            small
+            disabled={totalCards(offerRes) === 0 && totalCards(wantRes) === 0}
+            onClick={() =>
+              mutate((s) => {
+                s.tradeOffer = { from: clientId, give: offerRes, want: wantRes, declinedBy: [] };
+                addLog(s, `${playerName(s, clientId)} proposed a trade.`);
+                return s;
+              })
+            }
+          >
+            Propose trade
+          </Btn>
+        </>
+      )}
+      {openOffer && openOffer.from === clientId && (
+        <div style={{ marginTop: 12, fontSize: 12 }}>
+          <p>Waiting for someone to accept your offer…</p>
+          <Btn small variant="ghost" onClick={() => mutate((s) => { s.tradeOffer = null; return s; })}>Cancel offer</Btn>
+        </div>
+      )}
+    </ModalWrap>
+  );
+}
+const selectStyle = { padding: 6, borderRadius: 6 };
+const numInput = { width: 44, padding: 4, borderRadius: 6 };
+
+function DevCardModal({ state, clientId, me, mutate, onClose, onRoadBuilding }) {
+  const [monopolyPick, setMonopolyPick] = useState(null);
+  const [yopPicks, setYopPicks] = useState([]);
+  const playable = me.devCards.filter((c) => c.turnBought < state.turnCounter);
+
+  function playCard(card, extra) {
+    mutate((s) => {
+      const p = s.players.find((pl) => pl.id === clientId);
+      if (p.devPlayedThisTurn) return s;
+      const idx = p.devCards.findIndex((c) => c === card || (c.type === card.type && c.turnBought === card.turnBought));
+      if (idx === -1) return s;
+      p.devCards.splice(idx, 1);
+      p.devPlayedThisTurn = true;
+      if (card.type === "knight") {
+        p.playedKnights += 1;
+        s.robberMoveRequired = clientId;
+        recalcLargestArmy(s);
+        addLog(s, `${p.name} played a Knight.`);
+      } else if (card.type === "road_building") {
+        addLog(s, `${p.name} played Road Building — place 2 free roads.`);
+      } else if (card.type === "year_of_plenty") {
+        (extra || []).forEach((r) => {
+          if (s.bank[r] > 0) {
+            s.bank[r] -= 1;
+            p.resources[r] += 1;
+          }
+        });
+        addLog(s, `${p.name} played Year of Plenty.`);
+      } else if (card.type === "monopoly") {
+        let total = 0;
+        s.players.forEach((op) => {
+          if (op.id === p.id) return;
+          total += op.resources[extra];
+          p.resources[extra] += op.resources[extra];
+          op.resources[extra] = 0;
+        });
+        addLog(s, `${p.name} played Monopoly on ${RES_LABEL[extra]} and collected ${total}.`);
+      }
+      checkWinner(s);
+      return s;
+    });
+  }
+
+  return (
+    <ModalWrap onClose={onClose}>
+      <h4 style={{ marginTop: 0, color: "var(--gold)" }}>Development cards</h4>
+      {me.devCards.length === 0 && <p style={{ fontSize: 13, color: "#a89a7e" }}>No cards yet.</p>}
+      {me.devCards.map((c, i) => {
+        const isPlayableNow =
+          state.turnOrder[state.currentIndex] === clientId &&
+          state.turnPhase === "main" &&
+          !me.devPlayedThisTurn &&
+          c.turnBought < state.turnCounter &&
+          c.type !== "vp";
+        return (
+          <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 4px", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>
+            <span style={{ fontSize: 13 }}>{cardLabel(c.type)}</span>
+            {c.type === "monopoly" && isPlayableNow ? (
+              <div style={{ display: "flex", gap: 4 }}>
+                <select value={monopolyPick || ""} onChange={(e) => setMonopolyPick(e.target.value)} style={selectStyle}>
+                  <option value="">pick</option>
+                  {RES.map((r) => <option key={r} value={r}>{RES_LABEL[r]}</option>)}
+                </select>
+                <Btn small disabled={!monopolyPick} onClick={() => playCard(c, monopolyPick)}>Play</Btn>
+              </div>
+            ) : c.type === "year_of_plenty" && isPlayableNow ? (
+              <div style={{ display: "flex", gap: 4 }}>
+                <select
+                  onChange={(e) => setYopPicks((p) => [e.target.value, p[1]].filter(Boolean))}
+                  style={selectStyle}
+                >
+                  <option value="">1st</option>
+                  {RES.map((r) => <option key={r} value={r}>{RES_LABEL[r]}</option>)}
+                </select>
+                <select
+                  onChange={(e) => setYopPicks((p) => [p[0], e.target.value].filter(Boolean))}
+                  style={selectStyle}
+                >
+                  <option value="">2nd</option>
+                  {RES.map((r) => <option key={r} value={r}>{RES_LABEL[r]}</option>)}
+                </select>
+                <Btn small disabled={yopPicks.length !== 2} onClick={() => playCard(c, yopPicks)}>Play</Btn>
+              </div>
+            ) : (
+              isPlayableNow && (
+                <Btn
+                  small
+                  onClick={() => {
+                    if (c.type === "road_building") onRoadBuilding();
+                    playCard(c);
+                    onClose();
+                  }}
+                >
+                  Play
+                </Btn>
+              )
+            )}
+          </div>
+        );
+      })}
+    </ModalWrap>
+  );
+}
+function cardLabel(type) {
+  return { knight: "⚔️ Knight", vp: "⭐ Victory Point", road_building: "🛣️ Road Building", year_of_plenty: "🎁 Year of Plenty", monopoly: "📈 Monopoly" }[type];
+}
+
+/* ============================== ACTIONS ==================================== */
+
+function setupPlaceSettlement(s, playerId, vid) {
+  if (s.setupAwaitingRoad) return s;
+  if (!isValidSettlementSpot(s.board, vid, playerId, false)) return s;
+  s.board.buildings[vid] = { owner: playerId, type: "settlement" };
+  s.lastSetupSettlement = vid;
+  s.setupAwaitingRoad = true;
+  return s;
+}
+function setupPlaceRoad(s, playerId, eid) {
+  if (!s.setupAwaitingRoad) return s;
+  const edge = s.board.edges.find((e) => e.id === eid);
+  if (!edge || roadOwnerAt(s.board, eid)) return s;
+  if (edge.v1 !== s.lastSetupSettlement && edge.v2 !== s.lastSetupSettlement) return s;
+  s.board.roads[eid] = playerId;
+  s.setupAwaitingRoad = false;
+  s.setupPlaced += 1;
+  const p = s.players.find((pl) => pl.id === playerId);
+
+  if (s.setupRound === 2) {
+    hexResourcesForVertex(s.board, s.lastSetupSettlement).forEach((h) => {
+      if (h.resource === "desert" || h.resource === "sea") return;
+      const res = h.resource === "gold" ? RES[Math.floor(Math.random() * RES.length)] : h.resource;
+      if (s.bank[res] > 0) {
+        s.bank[res] -= 1;
+        p.resources[res] += 1;
+        recordGain(s, playerId, res, h.id);
+      }
+    });
+  }
+  addLog(s, `${p.name} placed a settlement and road.`);
+
+  const order = s.setupForward ? s.turnOrder : [...s.turnOrder].reverse();
+  const posInOrder = order.indexOf(playerId);
+  if (posInOrder === order.length - 1) {
+    if (s.setupRound === 1) {
+      s.setupRound = 2;
+      s.setupForward = false;
+      s.currentIndex = s.turnOrder.indexOf(order[order.length - 1]);
+    } else {
+      s.phase = "playing";
+      s.currentIndex = s.turnOrder.indexOf(s.turnOrder[0]);
+      s.turnPhase = "roll";
+      s.turnStartedAt = Date.now();
+      addLog(s, "Setup complete. The game begins!");
+    }
+  } else {
+    const nextPlayer = order[posInOrder + 1];
+    s.currentIndex = s.turnOrder.indexOf(nextPlayer);
+  }
+  return s;
+}
+
+function rollDice(s, playerId) {
+  const d1 = 1 + Math.floor(Math.random() * 6);
+  const d2 = 1 + Math.floor(Math.random() * 6);
+  const total = d1 + d2;
+  s.diceRoll = [d1, d2];
+  const p = s.players.find((pl) => pl.id === playerId);
+  addLog(s, `${p.name} rolled ${d1} + ${d2} = ${total}.`);
+
+  if (total === 7) {
+    s.pendingDiscards = {};
+    const limit = s.options?.discardLimit ?? 7;
+    s.players.forEach((pl) => {
+      const tot = totalCards(pl.resources);
+      if (tot > limit) s.pendingDiscards[pl.id] = Math.floor(tot / 2);
+    });
+    if (Object.keys(s.pendingDiscards).length === 0) {
+      s.robberMoveRequired = playerId;
+    }
+    s.turnPhase = "main";
+    return s;
+  }
+
+  s.board.hexes.forEach((h) => {
+    if (h.number !== total || h.id === s.board.robberHexId || h.resource === "sea") return;
+    const gains = {};
+    h.cornerIds.forEach((vid) => {
+      const b = s.board.buildings[vid];
+      if (b) {
+        const amt = b.type === "city" ? 2 : 1;
+        gains[b.owner] = (gains[b.owner] || 0) + amt;
+      }
+    });
+    if (h.resource === "gold") {
+      Object.entries(gains).forEach(([pid, amt]) => {
+        const pl = s.players.find((x) => x.id === pid);
+        for (let i = 0; i < amt; i++) {
+          const avail = RES.filter((r) => s.bank[r] > 0);
+          if (avail.length === 0) break;
+          const pick = avail[Math.floor(Math.random() * avail.length)];
+          s.bank[pick] -= 1;
+          pl.resources[pick] += 1;
+          recordGain(s, pid, pick, h.id);
+        }
+      });
+      return;
+    }
+    const needed = Object.values(gains).reduce((a, b2) => a + b2, 0);
+    if (needed > 0 && s.bank[h.resource] >= needed) {
+      Object.entries(gains).forEach(([pid, amt]) => {
+        const pl = s.players.find((x) => x.id === pid);
+        pl.resources[h.resource] += amt;
+        s.bank[h.resource] -= amt;
+        for (let i = 0; i < amt; i++) recordGain(s, pid, h.resource, h.id);
+      });
+    }
+  });
+  s.turnPhase = "main";
+  return s;
+}
+
+function maybeStartRobberMove(s) {
+  const stillWaiting = Object.keys(s.pendingDiscards).length > 0;
+  if (!stillWaiting && s.diceRoll && s.diceRoll[0] + s.diceRoll[1] === 7 && !s.robberMoveRequired) {
+    s.robberMoveRequired = s.turnOrder[s.currentIndex];
+  }
+  return s;
+}
+
+function moveRobber(s, playerId, hexId) {
+  s.board.robberHexId = hexId;
+  s.robberMoveRequired = null;
+  const hex = s.board.hexes.find((h) => h.id === hexId);
+  const targets = new Set();
+  hex.cornerIds.forEach((vid) => {
+    const b = s.board.buildings[vid];
+    if (b && b.owner !== playerId) targets.add(b.owner);
+  });
+  addLog(s, `${playerName(s, playerId)} moved the marauder.`);
+  if (targets.size > 0 && !s.options?.friendlyRobber) {
+    s.robberStealChoices = Array.from(targets);
+  } else {
+    s.robberStealChoices = null;
+  }
+  return s;
+}
+
+function resolveSteal(s, thiefId, victimId) {
+  const thief = s.players.find((p) => p.id === thiefId);
+  const victim = s.players.find((p) => p.id === victimId);
+  const pool = [];
+  RES.forEach((r) => { for (let i = 0; i < victim.resources[r]; i++) pool.push(r); });
+  if (pool.length > 0) {
+    const stolen = pool[Math.floor(Math.random() * pool.length)];
+    victim.resources[stolen] -= 1;
+    thief.resources[stolen] += 1;
+    addLog(s, `${thief.name} stole a card from ${victim.name}.`);
+  }
+  s.robberStealChoices = null;
+  return s;
+}
+
+function buildRoad(s, playerId, eid) {
+  const p = s.players.find((pl) => pl.id === playerId);
+  if (!canAfford(p.resources, COSTS.road)) return s;
+  p.resources = payCost(p.resources, COSTS.road);
+  Object.entries(COSTS.road).forEach(([r, n]) => (s.bank[r] += n));
+  s.board.roads[eid] = playerId;
+  addLog(s, `${p.name} built a road.`);
+  recalcLongestRoad(s);
+  checkWinner(s);
+  return s;
+}
+function buildSettlement(s, playerId, vid) {
+  const p = s.players.find((pl) => pl.id === playerId);
+  if (!canAfford(p.resources, COSTS.settlement)) return s;
+  p.resources = payCost(p.resources, COSTS.settlement);
+  Object.entries(COSTS.settlement).forEach(([r, n]) => (s.bank[r] += n));
+  s.board.buildings[vid] = { owner: playerId, type: "settlement" };
+  addLog(s, `${p.name} built a settlement.`);
+  recalcLongestRoad(s);
+  checkWinner(s);
+  return s;
+}
+function buildCity(s, playerId, vid) {
+  const p = s.players.find((pl) => pl.id === playerId);
+  if (!canAfford(p.resources, COSTS.city)) return s;
+  p.resources = payCost(p.resources, COSTS.city);
+  Object.entries(COSTS.city).forEach(([r, n]) => (s.bank[r] += n));
+  s.board.buildings[vid] = { owner: playerId, type: "city" };
+  addLog(s, `${p.name} upgraded to a city.`);
+  checkWinner(s);
+  return s;
+}
+
+function acceptTrade(s, accepterId) {
+  const offer = s.tradeOffer;
+  if (!offer) return s;
+  const from = s.players.find((p) => p.id === offer.from);
+  const to = s.players.find((p) => p.id === accepterId);
+  if (!RES.every((r) => to.resources[r] >= offer.want[r])) return s;
+  if (!RES.every((r) => from.resources[r] >= offer.give[r])) return s;
+  RES.forEach((r) => {
+    from.resources[r] -= offer.give[r];
+    from.resources[r] += offer.want[r];
+    to.resources[r] += offer.give[r];
+    to.resources[r] -= offer.want[r];
+  });
+  addLog(s, `${to.name} accepted a trade with ${from.name}.`);
+  s.tradeOffer = null;
+  return s;
+}
+
+function recalcLongestRoad(s) {
+  let bestPlayer = s.longestRoad.playerId;
+  let bestLen = s.longestRoad.playerId ? s.longestRoad.length : 0;
+  s.players.forEach((p) => {
+    const len = longestRoadForPlayer(s.board, p.id);
+    if (len >= 5 && len > bestLen) {
+      bestLen = len;
+      bestPlayer = p.id;
+    }
+  });
+  s.longestRoad = { playerId: bestPlayer, length: bestLen };
+}
+function recalcLargestArmy(s) {
+  let bestPlayer = s.largestArmy.playerId;
+  let bestCount = s.largestArmy.playerId ? s.largestArmy.count : 0;
+  s.players.forEach((p) => {
+    if (p.playedKnights >= 3 && p.playedKnights > bestCount) {
+      bestCount = p.playedKnights;
+      bestPlayer = p.id;
+    }
+  });
+  s.largestArmy = { playerId: bestPlayer, count: bestCount };
+}
+function checkWinner(s) {
+  const target = s.options?.winVp ?? DEFAULT_OPTIONS.winVp;
+  s.players.forEach((p) => {
+    if (!s.winner && computeVictoryPoints(s, p) >= target) {
+      s.winner = p.id;
+      s.phase = "ended";
+      addLog(s, `${p.name} reached ${target} victory points!`);
+    }
+  });
+}
+function endTurn(s) {
+  const p = s.players.find((pl) => pl.id === s.turnOrder[s.currentIndex]);
+  p.devPlayedThisTurn = false;
+  s.turnCounter += 1;
+  s.diceRoll = null;
+  s.tradeOffer = null;
+  s.currentIndex = (s.currentIndex + 1) % s.turnOrder.length;
+  s.turnPhase = "roll";
+  s.turnStartedAt = Date.now();
+  addLog(s, `${playerName(s, s.turnOrder[s.currentIndex])}'s turn.`);
+  return s;
+}
+
+/* ============================== AI PLAYERS ================================ */
+
+function findBotAction(s) {
+  if (!s || s.phase === "lobby" || s.phase === "ended" || s.winner) return null;
+  const discardBotId = Object.keys(s.pendingDiscards || {}).find((pid) => s.players.find((p) => p.id === pid)?.isBot);
+  if (discardBotId) return { type: "discard", botId: discardBotId };
+  if (s.robberMoveRequired && s.players.find((p) => p.id === s.robberMoveRequired)?.isBot) {
+    return { type: "robber", botId: s.robberMoveRequired };
+  }
+  if (s.tradeOffer) {
+    const candidate = s.players.find((p) => p.isBot && p.id !== s.tradeOffer.from && !s.tradeOffer.declinedBy.includes(p.id));
+    if (candidate) return { type: "trade", botId: candidate.id };
+  }
+  const curId = s.turnOrder[s.currentIndex];
+  const curPlayer = s.players.find((p) => p.id === curId);
+  if (curPlayer && curPlayer.isBot) {
+    if (s.phase === "setup") return { type: "setup", botId: curId };
+    if (s.phase === "playing") return { type: "turn", botId: curId };
+  }
+  return null;
+}
+
+function botSignature(s) {
+  if (!s) return "";
+  return JSON.stringify({
+    phase: s.phase,
+    currentIndex: s.currentIndex,
+    turnCounter: s.turnCounter,
+    turnPhase: s.turnPhase,
+    setupRound: s.setupRound,
+    setupForward: s.setupForward,
+    setupAwaitingRoad: s.setupAwaitingRoad,
+    setupPlaced: s.setupPlaced,
+    discards: Object.keys(s.pendingDiscards || {}).sort(),
+    robberMoveRequired: s.robberMoveRequired,
+    robberStealChoices: s.robberStealChoices,
+    tradeFrom: s.tradeOffer?.from,
+    tradeDeclined: s.tradeOffer?.declinedBy,
+  });
+}
+
+function vertexScore(board, vid) {
+  const hexes = hexResourcesForVertex(board, vid);
+  let score = 0;
+  const types = new Set();
+  hexes.forEach((h) => {
+    if (h.resource && h.resource !== "desert" && h.resource !== "sea") {
+      score += DOTS[h.number] || (h.resource === "gold" ? 3 : 0);
+      types.add(h.resource === "gold" ? "wild" : h.resource);
+    }
+  });
+  score += types.size * 0.5;
+  return score;
+}
+
+function botResolveDiscard(s, botId) {
+  const p = s.players.find((pl) => pl.id === botId);
+  let need = s.pendingDiscards[botId];
+  if (!need) return s;
+  while (need > 0) {
+    const r = [...RES].sort((a, b) => p.resources[b] - p.resources[a])[0];
+    if (!r || p.resources[r] <= 0) break;
+    p.resources[r] -= 1;
+    s.bank[r] += 1;
+    need -= 1;
+  }
+  delete s.pendingDiscards[botId];
+  addLog(s, `${p.name} discarded cards.`);
+  maybeStartRobberMove(s);
+  return s;
+}
+
+function botResolveRobber(s, botId) {
+  const board = s.board;
+  const candidates = board.hexes.filter((h) => h.id !== board.robberHexId && h.resource !== "sea");
+  function score(h) {
+    let sc = 0,
+      touchesMine = false,
+      touchesOpp = false;
+    h.cornerIds.forEach((vid) => {
+      const b = board.buildings[vid];
+      if (b) {
+        if (b.owner === botId) touchesMine = true;
+        else {
+          touchesOpp = true;
+          sc += b.type === "city" ? 2 : 1;
+        }
+      }
+    });
+    if (touchesMine) sc -= 5;
+    if (!touchesOpp) sc -= 10;
+    return sc;
+  }
+  let best = candidates[0];
+  let bestScore = -Infinity;
+  candidates.forEach((h) => {
+    const sc = score(h);
+    if (sc > bestScore) {
+      bestScore = sc;
+      best = h;
+    }
+  });
+  if (!best) return s;
+  moveRobber(s, botId, best.id);
+  if (s.robberStealChoices && s.robberStealChoices.length) {
+    const victim = [...s.robberStealChoices].sort(
+      (a, b) => totalCards(s.players.find((p) => p.id === b).resources) - totalCards(s.players.find((p) => p.id === a).resources)
+    )[0];
+    resolveSteal(s, botId, victim);
+  }
+  return s;
+}
+
+function botRespondTrade(s, botId) {
+  const offer = s.tradeOffer;
+  if (!offer) return s;
+  const p = s.players.find((pl) => pl.id === botId);
+  const canAffordWant = RES.every((r) => p.resources[r] >= offer.want[r]);
+  const giveTotal = totalCards(offer.give),
+    wantTotal = totalCards(offer.want);
+  if (canAffordWant && giveTotal >= wantTotal) {
+    return acceptTrade(s, botId);
+  }
+  offer.declinedBy.push(botId);
+  return s;
+}
+
+function botDoSetup(s, botId) {
+  const board = s.board;
+  const openVertices = board.vertices.filter((v) => isValidSettlementSpot(board, v.id, botId, false));
+  if (openVertices.length === 0) return s;
+  openVertices.sort((a, b) => vertexScore(board, b.id) - vertexScore(board, a.id));
+  const chosen = openVertices[0];
+  setupPlaceSettlement(s, botId, chosen.id);
+  const edges = vertexEdges(board, chosen.id).filter((e) => !roadOwnerAt(board, e.id));
+  if (edges.length) setupPlaceRoad(s, botId, edges[Math.floor(Math.random() * edges.length)].id);
+  return s;
+}
+
+function botDoFullTurn(s, botId) {
+  if (s.turnPhase === "roll") {
+    rollDice(s, botId);
+    if (Object.keys(s.pendingDiscards).length > 0) return s;
+    if (s.robberMoveRequired === botId) botResolveRobber(s, botId);
+  }
+  let guard = 0;
+  while (guard++ < 12) {
+    const player = s.players.find((pl) => pl.id === botId);
+    const mySettlements = Object.entries(s.board.buildings)
+      .filter(([, b]) => b.owner === botId && b.type === "settlement")
+      .map(([vid]) => vid);
+    if (canAfford(player.resources, COSTS.city) && mySettlements.length) {
+      mySettlements.sort((a, b) => vertexScore(s.board, b) - vertexScore(s.board, a));
+      buildCity(s, botId, mySettlements[0]);
+      continue;
+    }
+    const openSpots = s.board.vertices.filter((v) => isValidSettlementSpot(s.board, v.id, botId, true));
+    if (canAfford(player.resources, COSTS.settlement) && openSpots.length) {
+      openSpots.sort((a, b) => vertexScore(s.board, b.id) - vertexScore(s.board, a.id));
+      buildSettlement(s, botId, openSpots[0].id);
+      continue;
+    }
+    const openRoads = s.board.edges.filter((e) => isValidRoadSpot(s.board, e.id, botId));
+    if (canAfford(player.resources, COSTS.road) && openRoads.length && guard < 4) {
+      buildRoad(s, botId, openRoads[Math.floor(Math.random() * openRoads.length)].id);
+      continue;
+    }
+    if (canAfford(player.resources, COSTS.dev) && s.devDeck.length > 0 && guard < 6) {
+      player.resources = payCost(player.resources, COSTS.dev);
+      Object.entries(COSTS.dev).forEach(([r, n]) => (s.bank[r] += n));
+      const card = s.devDeck.pop();
+      player.devCards.push({ type: card, turnBought: s.turnCounter });
+      addLog(s, `${player.name} bought a development card.`);
+      continue;
+    }
+    const knight = player.devCards.find((c) => c.type === "knight" && c.turnBought < s.turnCounter);
+    if (knight && !player.devPlayedThisTurn) {
+      const robberHex = s.board.hexes.find((h) => h.id === s.board.robberHexId);
+      const hurtsMe = robberHex && robberHex.cornerIds.some((vid) => s.board.buildings[vid]?.owner === botId);
+      if (hurtsMe) {
+        const idx = player.devCards.indexOf(knight);
+        player.devCards.splice(idx, 1);
+        player.devPlayedThisTurn = true;
+        player.playedKnights += 1;
+        recalcLargestArmy(s);
+        addLog(s, `${player.name} played a Knight.`);
+        botResolveRobber(s, botId);
+        continue;
+      }
+    }
+    const overflow = RES.find((r) => player.resources[r] >= 5);
+    if (overflow) {
+      const need = RES.find((r) => player.resources[r] === 0);
+      if (need) {
+        const ratio = playerPortRatio(s.board, botId, overflow);
+        if (player.resources[overflow] >= ratio && s.bank[need] > 0) {
+          player.resources[overflow] -= ratio;
+          s.bank[overflow] += ratio;
+          player.resources[need] += 1;
+          s.bank[need] -= 1;
+          continue;
+        }
+      }
+    }
+    break;
+  }
+  endTurn(s);
+  checkWinner(s);
+  return s;
+}
+
+function applyBotAction(s, action) {
+  const fresh = findBotAction(s);
+  if (!fresh || fresh.type !== action.type || fresh.botId !== action.botId) return s;
+  if (action.type === "discard") return botResolveDiscard(s, action.botId);
+  if (action.type === "robber") return botResolveRobber(s, action.botId);
+  if (action.type === "trade") return botRespondTrade(s, action.botId);
+  if (action.type === "setup") return botDoSetup(s, action.botId);
+  if (action.type === "turn") return botDoFullTurn(s, action.botId);
+  return s;
+}
+
+/* ============================== TURN TIMER ================================ */
+
+function findTimeoutAction(s) {
+  if (!s || s.phase !== "playing" || s.winner) return null;
+  const timerSec = s.options?.turnTimerSec || 0;
+  if (!timerSec) return null;
+  if (Object.keys(s.pendingDiscards || {}).length) return null;
+  if (s.robberMoveRequired) return null;
+  const elapsed = Date.now() - (s.turnStartedAt || Date.now());
+  if (elapsed < timerSec * 1000) return null;
+  const curId = s.turnOrder[s.currentIndex];
+  const cur = s.players.find((p) => p.id === curId);
+  if (!cur || cur.isBot) return null;
+  return { type: s.turnPhase === "roll" ? "auto-roll" : "auto-end", playerId: curId };
+}
+
+function applyTimeoutAction(s, action) {
+  const fresh = findTimeoutAction(s);
+  if (!fresh || fresh.type !== action.type || fresh.playerId !== action.playerId) return s;
+  if (action.type === "auto-roll") {
+    rollDice(s, action.playerId);
+    return s;
+  }
+  if (action.type === "auto-end") {
+    addLog(s, `${playerName(s, action.playerId)} ran out of time.`);
+    endTurn(s);
+    return s;
+  }
+  return s;
+}
+
+const rootEl = document.getElementById("root");
+ReactDOM.createRoot(rootEl).render(<Landfall />);
+</script>
+
+</body>
+</html>
