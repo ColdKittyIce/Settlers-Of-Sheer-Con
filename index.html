@@ -33,10 +33,9 @@
      replacing the placeholder values.
   ============================================================
 -->
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-  import { getDatabase, ref, get, set, onValue } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js";
-
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+<script>
   // ==== PASTE YOUR FIREBASE CONFIG HERE ====
   const firebaseConfig = {
     apiKey: "AIzaSyDfmxWgAVI_ZCzdDB3JDitLaIjkni0zuVA",
@@ -50,9 +49,22 @@
   // ==========================================
 
   try {
-    const app = initializeApp(firebaseConfig);
-    const db = getDatabase(app);
-    window.__fb = { db, ref, get, set, onValue };
+    const app = firebase.initializeApp(firebaseConfig);
+    const db = firebase.database();
+    // Shim matching the modular Firebase API shape the game code expects,
+    // built on top of the plain-script "compat" SDK (avoids ES module
+    // import syntax entirely, which conflicts with the in-browser Babel
+    // transformer used below to run the JSX without a build step).
+    window.__fb = {
+      db,
+      ref: (database, path) => database.ref(path),
+      get: (reference) => reference.once("value"),
+      set: (reference, value) => reference.set(value),
+      onValue: (reference, callback) => {
+        reference.on("value", callback);
+        return () => reference.off("value", callback);
+      },
+    };
   } catch (e) {
     console.error("Firebase init failed:", e);
     document.getElementById("fb-error-banner").style.display = "block";
@@ -570,7 +582,7 @@ function computeVictoryPoints(state, player) {
 
 /* ============================== FIREBASE STORAGE LAYER ============================== */
 /* Replaces Claude artifact's window.storage with Firebase Realtime Database.
-   Firebase is initialized in the <script type="module"> block in index.html
+   Firebase is initialized in the compat-SDK script block in index.html
    and exposed on window.__fb = { db, ref, get, set, onValue }. */
 
 async function fbGetGame(code) {
