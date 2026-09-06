@@ -496,10 +496,11 @@ function twinIslesCoords() {
   }];
   return [...isleA, ...bridge, ...isleB];
 }
-function rowShapeCoords(rowWidths) {
+function rowShapeCoords(rowWidths, opts = {}) {
+  const lean = opts.lean || 0;
   const coords = [];
   rowWidths.forEach((w, r) => {
-    const qStart = -Math.floor(w / 2) - Math.floor(r / 2);
+    const qStart = -Math.floor(w / 2) - Math.floor(r / 2) + Math.round(r * lean);
     for (let i = 0; i < w; i++) coords.push({
       q: qStart + i,
       r
@@ -508,25 +509,35 @@ function rowShapeCoords(rowWidths) {
   return coords;
 }
 function illinoisCoords() {
-  return rowShapeCoords([3, 3, 3, 3, 3, 2, 2, 2, 1]);
+  // North (Chicago) to south (Cairo), tall and narrow with a long tail.
+  return rowShapeCoords([4, 4, 5, 5, 4, 4, 4, 3, 3, 3, 2, 2, 1]);
 }
 function californiaCoords() {
-  return rowShapeCoords([2, 3, 3, 4, 4, 4, 3, 3, 2, 2]);
+  // North (Oregon border) to south (Mexico border), widest through SoCal,
+  // with a slight eastward lean going south matching the real coastline tilt.
+  return rowShapeCoords([3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 6, 5, 4, 2], {
+    lean: 0.35
+  });
 }
 function michiganCoords() {
-  const body = rowShapeCoords([3, 4, 4, 3, 3, 2]);
+  const body = rowShapeCoords([2, 3, 4, 4, 5, 5, 5, 5, 4, 4, 4]);
   const thumb = [{
     q: 1,
-    r: 2
+    r: 4
   }, {
     q: 2,
-    r: 2
+    r: 4
+  }, {
+    q: 1,
+    r: 5
   }];
-  const up = translateCoords(rowShapeCoords([4, 3]), -3, -4);
+  const up = translateCoords(rowShapeCoords([6, 5]), -3, -4);
   return [...body, ...thumb, ...up];
 }
 function northAmericaCoords() {
-  return rowShapeCoords([5, 6, 6, 5, 5, 4, 3, 3, 2]);
+  // Wide north (Canada), tapering south through the US into a narrow
+  // Central American point — a proper continent wedge, not a small blob.
+  return rowShapeCoords([7, 8, 8, 7, 7, 6, 6, 5, 4, 4, 3, 2]);
 }
 const MAPS = {
   standard: {
@@ -655,71 +666,87 @@ const MAPS = {
     maxP: 6,
     build: () => ({
       coords: northAmericaCoords(),
-      size: 38,
-      desertCount: 2
+      size: 34,
+      desertCount: 3
     })
   },
   michigan: {
     name: "Michigan",
     desc: "The mitten and the U.P. — two landmasses, real cities marked.",
-    minP: 3,
+    minP: 4,
     maxP: 6,
     build: () => ({
       coords: michiganCoords(),
-      size: 42,
-      desertCount: 2,
+      size: 36,
+      desertCount: 3,
       cities: [{
-        name: "Lansing",
+        name: "Traverse City",
         q: -1,
-        r: 2
-      }, {
-        name: "Detroit",
-        q: 0,
-        r: 3
+        r: 1
       }, {
         name: "Grand Rapids",
-        q: -2,
-        r: 3
+        q: -5,
+        r: 6
       }, {
-        name: "Traverse City",
+        name: "Holland",
+        q: -4,
+        r: 5
+      }, {
+        name: "Wayland",
+        q: -5,
+        r: 7
+      }, {
+        name: "Kalamazoo",
+        q: -6,
+        r: 8
+      }, {
+        name: "Battle Creek",
+        q: -3,
+        r: 8
+      }, {
+        name: "Lansing",
         q: -2,
-        r: 1
+        r: 7
+      }, {
+        name: "Detroit",
+        q: -3,
+        r: 9
       }, {
         name: "Marquette",
         q: -3,
-        r: -3
+        r: -4
       }]
     })
   },
   california: {
     name: "California",
-    desc: "A long coastal stretch, real cities marked.",
-    minP: 3,
+    desc: "A long, leaning coastal stretch, real cities marked.",
+    minP: 4,
     maxP: 6,
     build: () => ({
       coords: californiaCoords(),
-      size: 40,
-      desertCount: 2,
+      size: 34,
+      desertCount: 3,
       cities: [{
         name: "Sacramento",
         q: 0,
-        r: 1
-      }, {
-        name: "San Francisco",
-        q: -2,
-        r: 2
-      }, {
-        name: "Fresno",
-        q: -2,
         r: 4
       }, {
-        name: "Los Angeles",
-        q: -3,
+        name: "San Francisco",
+        q: -1,
+        r: 4
+      }, {
+        name: "Fresno",
+        q: 1,
         r: 7
       }, {
+        name: "Los Angeles",
+        q: 1,
+        r: 10
+      }, {
         name: "San Diego",
-        q: -4,
-        r: 9
+        q: -1,
+        r: 12
       }]
     })
   },
@@ -727,27 +754,27 @@ const MAPS = {
     name: "Illinois",
     desc: "A tall central-plains board, real cities marked.",
     minP: 3,
-    maxP: 4,
+    maxP: 6,
     build: () => ({
       coords: illinoisCoords(),
-      size: 44,
-      desertCount: 1,
+      size: 38,
+      desertCount: 2,
       cities: [{
         name: "Chicago",
         q: 1,
         r: 0
       }, {
         name: "Peoria",
-        q: -1,
-        r: 2
+        q: -2,
+        r: 5
       }, {
         name: "Springfield",
-        q: -2,
-        r: 4
+        q: -3,
+        r: 7
       }, {
         name: "Cairo",
-        q: -4,
-        r: 8
+        q: -6,
+        r: 12
       }]
     })
   }
@@ -1304,6 +1331,7 @@ function recordGain(state, playerId, resource, hexId) {
 function Landfall() {
   const clientId = useClientId();
   const [code, setCode] = useState(null);
+  const [lastCode, setLastCode] = useState(null);
   const [nameDraft, setNameDraft] = useState("");
   const [joinCodeDraft, setJoinCodeDraft] = useState("");
   const [maxPlayersDraft, setMaxPlayersDraft] = useState(4);
@@ -1320,6 +1348,21 @@ function Landfall() {
     mutate,
     error
   } = useGame(code);
+  useEffect(() => {
+    try {
+      setLastCode(localStorage.getItem("landfall-last-code"));
+    } catch (e) {
+      /* no localStorage available */
+    }
+  }, []);
+  useEffect(() => {
+    if (!code) return;
+    try {
+      localStorage.setItem("landfall-last-code", code);
+    } catch (e) {
+      /* no localStorage available */
+    }
+  }, [code]);
   if (!clientId) {
     return /*#__PURE__*/React.createElement(Shell, null, /*#__PURE__*/React.createElement("div", {
       style: {
@@ -1335,6 +1378,8 @@ function Landfall() {
   }
   if (!code) {
     return /*#__PURE__*/React.createElement(Home, {
+      lastCode: lastCode,
+      onResume: () => setCode(lastCode),
       mode: mode,
       setMode: setMode,
       nameDraft: nameDraft,
@@ -1415,17 +1460,28 @@ function Landfall() {
         color: "#d9cba4",
         flex: 1,
         display: "flex",
+        flexDirection: "column",
+        gap: 14,
         alignItems: "center",
         justifyContent: "center"
       }
-    }, "Loading game ", code, "…"));
+    }, /*#__PURE__*/React.createElement("div", null, "Loading game ", code, "…"), /*#__PURE__*/React.createElement(Btn, {
+      variant: "ghost",
+      small: true,
+      onClick: () => setCode(null)
+    }, "Back")));
   }
   return /*#__PURE__*/React.createElement(Shell, null, /*#__PURE__*/React.createElement(GameView, {
     state: state,
     mutate: mutate,
     clientId: clientId,
     code: code,
-    onLeave: () => setCode(null),
+    onLeave: () => {
+      if (state.phase !== "lobby" && state.phase !== "ended") {
+        if (!window.confirm(`Leave the game? You can get right back in — either use "Resume last game" on the home screen, or rejoin with code ${code}.`)) return;
+      }
+      setCode(null);
+    },
     onGoToCode: setCode,
     error: error
   }));
@@ -1753,7 +1809,9 @@ function Home({
   setIconDraft,
   onCreate,
   onSolo,
-  onJoin
+  onJoin,
+  lastCode,
+  onResume
 }) {
   return /*#__PURE__*/React.createElement(Shell, null, /*#__PURE__*/React.createElement("div", {
     style: {
@@ -1810,7 +1868,10 @@ function Home({
       flexDirection: "column",
       gap: 12
     }
-  }, /*#__PURE__*/React.createElement(Btn, {
+  }, lastCode && /*#__PURE__*/React.createElement(Btn, {
+    variant: "gold",
+    onClick: onResume
+  }, "↩ Resume last game (#", lastCode, ")"), /*#__PURE__*/React.createElement(Btn, {
     onClick: () => setMode("create")
   }, "Start a new game"), /*#__PURE__*/React.createElement(Btn, {
     variant: "ghost",
