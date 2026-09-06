@@ -301,6 +301,38 @@ function twinIslesCoords() {
   }];
   return [...isleA, ...bridge, ...isleB];
 }
+function rowShapeCoords(rowWidths) {
+  const coords = [];
+  rowWidths.forEach((w, r) => {
+    const qStart = -Math.floor(w / 2) - Math.floor(r / 2);
+    for (let i = 0; i < w; i++) coords.push({
+      q: qStart + i,
+      r
+    });
+  });
+  return coords;
+}
+function illinoisCoords() {
+  return rowShapeCoords([3, 3, 3, 3, 3, 2, 2, 2, 1]);
+}
+function californiaCoords() {
+  return rowShapeCoords([2, 3, 3, 4, 4, 4, 3, 3, 2, 2]);
+}
+function michiganCoords() {
+  const body = rowShapeCoords([3, 4, 4, 3, 3, 2]);
+  const thumb = [{
+    q: 1,
+    r: 2
+  }, {
+    q: 2,
+    r: 2
+  }];
+  const up = translateCoords(rowShapeCoords([4, 3]), -3, -4);
+  return [...body, ...thumb, ...up];
+}
+function northAmericaCoords() {
+  return rowShapeCoords([5, 6, 6, 5, 5, 4, 3, 3, 2]);
+}
 const MAPS = {
   standard: {
     name: "Standard",
@@ -419,6 +451,109 @@ const MAPS = {
       coords: twinIslesCoords(),
       size: 42,
       desertCount: 2
+    })
+  },
+  northAmerica: {
+    name: "North America",
+    desc: "A sprawling continent-shaped board for epic games.",
+    minP: 4,
+    maxP: 6,
+    build: () => ({
+      coords: northAmericaCoords(),
+      size: 38,
+      desertCount: 2
+    })
+  },
+  michigan: {
+    name: "Michigan",
+    desc: "The mitten and the U.P. — two landmasses, real cities marked.",
+    minP: 3,
+    maxP: 6,
+    build: () => ({
+      coords: michiganCoords(),
+      size: 42,
+      desertCount: 2,
+      cities: [{
+        name: "Lansing",
+        q: -1,
+        r: 2
+      }, {
+        name: "Detroit",
+        q: 0,
+        r: 3
+      }, {
+        name: "Grand Rapids",
+        q: -2,
+        r: 3
+      }, {
+        name: "Traverse City",
+        q: -2,
+        r: 1
+      }, {
+        name: "Marquette",
+        q: -3,
+        r: -3
+      }]
+    })
+  },
+  california: {
+    name: "California",
+    desc: "A long coastal stretch, real cities marked.",
+    minP: 3,
+    maxP: 6,
+    build: () => ({
+      coords: californiaCoords(),
+      size: 40,
+      desertCount: 2,
+      cities: [{
+        name: "Sacramento",
+        q: 0,
+        r: 1
+      }, {
+        name: "San Francisco",
+        q: -2,
+        r: 2
+      }, {
+        name: "Fresno",
+        q: -2,
+        r: 4
+      }, {
+        name: "Los Angeles",
+        q: -3,
+        r: 7
+      }, {
+        name: "San Diego",
+        q: -4,
+        r: 9
+      }]
+    })
+  },
+  illinois: {
+    name: "Illinois",
+    desc: "A tall central-plains board, real cities marked.",
+    minP: 3,
+    maxP: 4,
+    build: () => ({
+      coords: illinoisCoords(),
+      size: 44,
+      desertCount: 1,
+      cities: [{
+        name: "Chicago",
+        q: 1,
+        r: 0
+      }, {
+        name: "Peoria",
+        q: -1,
+        r: 2
+      }, {
+        name: "Springfield",
+        q: -2,
+        r: 4
+      }, {
+        name: "Cairo",
+        q: -4,
+        r: 8
+      }]
     })
   }
 };
@@ -849,7 +984,7 @@ function makePlayer(id, name, color, isBot) {
     devPlayedThisTurn: false
   };
 }
-function createNewGame(hostId, hostName, maxPlayers, mapId = "standard", options = {}) {
+function createNewGame(hostId, hostName, maxPlayers, mapId = "standard", options = {}, hostColor = null) {
   const map = MAPS[mapId] || MAPS.standard;
   const built = map.build(maxPlayers);
   const geo = assignBoard(built.coords, built.size, built);
@@ -860,7 +995,8 @@ function createNewGame(hostId, hostName, maxPlayers, mapId = "standard", options
     ports: geo.ports,
     buildings: {},
     roads: {},
-    robberHexId: geo.robberHexId
+    robberHexId: geo.robberHexId,
+    cities: built.cities || []
   };
   return {
     code: uid(5),
@@ -871,7 +1007,7 @@ function createNewGame(hostId, hostName, maxPlayers, mapId = "standard", options
       ...options
     },
     phase: "lobby",
-    players: [makePlayer(hostId, hostName, PLAYER_COLORS[0], false)],
+    players: [makePlayer(hostId, hostName, hostColor || PLAYER_COLORS[0], false)],
     board,
     bank: {
       wood: BANK_START,
@@ -905,6 +1041,8 @@ function createNewGame(hostId, hostName, maxPlayers, mapId = "standard", options
     winner: null,
     lastGains: [],
     gainsSeq: 0,
+    chat: [],
+    chatSeq: 0,
     log: [{
       msg: `${hostName} created the game.`
     }],
@@ -916,6 +1054,19 @@ function addLog(state, msg) {
     msg
   }];
   state.lastUpdated = Date.now();
+  return state;
+}
+function sendChatMessage(state, playerId, name, text) {
+  const clean = (text || "").trim().slice(0, 300);
+  if (!clean) return state;
+  state.chatSeq = (state.chatSeq || 0) + 1;
+  state.chat = [...(state.chat || []).slice(-59), {
+    id: state.chatSeq,
+    playerId,
+    name,
+    text: clean,
+    ts: Date.now()
+  }];
   return state;
 }
 function recordGain(state, playerId, resource, hexId) {
@@ -942,6 +1093,7 @@ function Landfall() {
   const [optionsDraft, setOptionsDraft] = useState({
     ...DEFAULT_OPTIONS
   });
+  const [colorDraft, setColorDraft] = useState(PLAYER_COLORS[0]);
   const [mode, setMode] = useState("home");
   const {
     state,
@@ -977,19 +1129,22 @@ function Landfall() {
       setAiCountDraft: setAiCountDraft,
       optionsDraft: optionsDraft,
       setOptionsDraft: setOptionsDraft,
+      colorDraft: colorDraft,
+      setColorDraft: setColorDraft,
       onCreate: async () => {
         const name = nameDraft.trim() || "Player 1";
-        const newState = createNewGame(clientId, name, maxPlayersDraft, mapDraft, optionsDraft);
+        const newState = createNewGame(clientId, name, maxPlayersDraft, mapDraft, optionsDraft, colorDraft);
         await fbSetGame(newState.code, newState);
         setCode(newState.code);
       },
       onSolo: async () => {
         const name = nameDraft.trim() || "Player 1";
         const total = Math.min(6, aiCountDraft + 1);
-        const newState = createNewGame(clientId, name, total, mapDraft, optionsDraft);
+        const newState = createNewGame(clientId, name, total, mapDraft, optionsDraft, colorDraft);
         const botNames = shuffle(BOT_NAMES);
+        const remainingColors = PLAYER_COLORS.filter(c => c !== colorDraft);
         for (let i = 0; i < aiCountDraft; i++) {
-          newState.players.push(makePlayer("bot_" + uid(8), botNames[i % botNames.length], PLAYER_COLORS[(i + 1) % PLAYER_COLORS.length], true));
+          newState.players.push(makePlayer("bot_" + uid(8), botNames[i % botNames.length], remainingColors[i % remainingColors.length], true));
         }
         newState.turnOrder = shuffle(newState.players.map(p => p.id));
         newState.phase = "setup";
@@ -1016,7 +1171,9 @@ function Landfall() {
               alert("That game has already started.");
               return;
             }
-            g.players.push(makePlayer(clientId, nameDraft.trim() || `Player ${g.players.length + 1}`, PLAYER_COLORS[g.players.length % PLAYER_COLORS.length], false));
+            const takenColors = new Set(g.players.map(p => p.color));
+            const myColor = takenColors.has(colorDraft) ? PLAYER_COLORS.find(c => !takenColors.has(c)) || colorDraft : colorDraft;
+            g.players.push(makePlayer(clientId, nameDraft.trim() || `Player ${g.players.length + 1}`, myColor, false));
             addLog(g, `${nameDraft.trim() || "A new player"} joined.`);
             await fbSetGame(joinCode, g);
           }
@@ -1363,6 +1520,8 @@ function Home({
   setAiCountDraft,
   optionsDraft,
   setOptionsDraft,
+  colorDraft,
+  setColorDraft,
   onCreate,
   onSolo,
   onJoin
@@ -1442,6 +1601,11 @@ function Home({
     placeholder: "Brad",
     style: inputStyle
   })), /*#__PURE__*/React.createElement(Field, {
+    label: "Your color"
+  }, /*#__PURE__*/React.createElement(ColorPicker, {
+    value: colorDraft,
+    onChange: setColorDraft
+  })), /*#__PURE__*/React.createElement(Field, {
     label: "Max players"
   }, /*#__PURE__*/React.createElement("div", {
     style: {
@@ -1483,6 +1647,11 @@ function Home({
     placeholder: "Brad",
     style: inputStyle
   })), /*#__PURE__*/React.createElement(Field, {
+    label: "Your color"
+  }, /*#__PURE__*/React.createElement(ColorPicker, {
+    value: colorDraft,
+    onChange: setColorDraft
+  })), /*#__PURE__*/React.createElement(Field, {
     label: "Number of AI opponents"
   }, /*#__PURE__*/React.createElement("div", {
     style: {
@@ -1520,6 +1689,11 @@ function Home({
     placeholder: "Your name",
     style: inputStyle
   })), /*#__PURE__*/React.createElement(Field, {
+    label: "Your color"
+  }, /*#__PURE__*/React.createElement(ColorPicker, {
+    value: colorDraft,
+    onChange: setColorDraft
+  })), /*#__PURE__*/React.createElement(Field, {
     label: "Game code"
   }, /*#__PURE__*/React.createElement("input", {
     value: joinCodeDraft,
@@ -1548,6 +1722,48 @@ function pillStyle(active) {
     color: "#f7edd3",
     fontWeight: 700
   };
+}
+function ColorPicker({
+  value,
+  onChange,
+  takenColors
+}) {
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      flexWrap: "wrap"
+    }
+  }, PLAYER_COLORS.map(c => {
+    const taken = takenColors && takenColors.has(c) && c !== value;
+    return /*#__PURE__*/React.createElement("button", {
+      key: c,
+      type: "button",
+      disabled: taken,
+      onClick: () => onChange(c),
+      title: taken ? "Already taken" : c,
+      style: {
+        width: 34,
+        height: 34,
+        borderRadius: "50%",
+        background: c,
+        border: value === c ? "3px solid var(--gold)" : "2px solid rgba(255,255,255,0.3)",
+        boxShadow: value === c ? "0 0 0 2px rgba(0,0,0,0.4)" : "none",
+        opacity: taken ? 0.25 : 1,
+        position: "relative"
+      }
+    }, taken && /*#__PURE__*/React.createElement("span", {
+      style: {
+        position: "absolute",
+        inset: 0,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize: 14,
+        color: "#fff"
+      }
+    }, "✕"));
+  }));
 }
 function Field({
   label,
@@ -1615,6 +1831,86 @@ function GameView({
     error: error
   });
 }
+function ChatPanel({
+  state,
+  mutate,
+  clientId,
+  maxHeight
+}) {
+  const [text, setText] = useState("");
+  const listRef = useRef(null);
+  const me = state.players.find(p => p.id === clientId);
+  useEffect(() => {
+    if (listRef.current) listRef.current.scrollTop = listRef.current.scrollHeight;
+  }, [state.chat]);
+  function send() {
+    if (!text.trim()) return;
+    mutate(s => sendChatMessage(s, clientId, me?.name || "Player", text));
+    setText("");
+  }
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 6
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    ref: listRef,
+    style: {
+      maxHeight: maxHeight || 180,
+      minHeight: 60,
+      overflowY: "auto",
+      display: "flex",
+      flexDirection: "column",
+      gap: 4,
+      background: "rgba(0,0,0,0.28)",
+      border: "1px solid rgba(255,255,255,0.1)",
+      borderRadius: 8,
+      padding: 8
+    }
+  }, (state.chat || []).length === 0 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: "#a89a7e"
+    }
+  }, "No messages yet — say hi!"), (state.chat || []).map(m => /*#__PURE__*/React.createElement("div", {
+    key: m.id,
+    style: {
+      fontSize: 12,
+      lineHeight: 1.4
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontWeight: 700,
+      color: "var(--gold)"
+    }
+  }, m.name, ": "), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: "#e7daca"
+    }
+  }, m.text)))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 6
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    value: text,
+    onChange: e => setText(e.target.value),
+    onKeyDown: e => {
+      if (e.key === "Enter") send();
+    },
+    placeholder: "Message…",
+    style: {
+      ...inputStyle,
+      flex: 1,
+      padding: "8px 10px",
+      fontSize: 13
+    }
+  }), /*#__PURE__*/React.createElement(Btn, {
+    small: true,
+    onClick: send
+  }, "Send")));
+}
 function Lobby({
   state,
   mutate,
@@ -1624,6 +1920,9 @@ function Lobby({
   isPlayer
 }) {
   const isHost = state.players[0]?.id === clientId;
+  const [showColorPicker, setShowColorPicker] = useState(false);
+  const me = state.players.find(p => p.id === clientId);
+  const takenColors = new Set(state.players.filter(p => p.id !== clientId).map(p => p.color));
   return /*#__PURE__*/React.createElement("div", {
     style: {
       flex: 1,
@@ -1679,7 +1978,8 @@ function Lobby({
       margin: "16px 0"
     }
   }, state.players.map(p => /*#__PURE__*/React.createElement("div", {
-    key: p.id,
+    key: p.id
+  }, /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       alignItems: "center",
@@ -1688,13 +1988,25 @@ function Lobby({
       background: "rgba(0,0,0,0.25)",
       borderRadius: 8
     }
-  }, /*#__PURE__*/React.createElement("span", {
+  }, p.id === clientId ? /*#__PURE__*/React.createElement("button", {
+    onClick: () => setShowColorPicker(v => !v),
+    title: "Change your color",
+    style: {
+      width: 16,
+      height: 16,
+      borderRadius: "50%",
+      background: p.color,
+      border: "2px solid var(--gold)",
+      flexShrink: 0
+    }
+  }) : /*#__PURE__*/React.createElement("span", {
     style: {
       width: 12,
       height: 12,
       borderRadius: "50%",
       background: p.color,
-      display: "inline-block"
+      display: "inline-block",
+      flexShrink: 0
     }
   }), /*#__PURE__*/React.createElement("span", {
     style: {
@@ -1710,7 +2022,22 @@ function Lobby({
       fontSize: 11,
       color: "#a89a7e"
     }
-  }, "host"))), Array.from({
+  }, "host")), p.id === clientId && showColorPicker && /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: "8px 10px 2px"
+    }
+  }, /*#__PURE__*/React.createElement(ColorPicker, {
+    value: me?.color,
+    takenColors: takenColors,
+    onChange: c => {
+      mutate(s => {
+        const pl = s.players.find(x => x.id === clientId);
+        if (pl && !s.players.some(x => x.id !== clientId && x.color === c)) pl.color = c;
+        return s;
+      });
+      setShowColorPicker(false);
+    }
+  })))), Array.from({
     length: state.maxPlayers - state.players.length
   }).map((_, i) => /*#__PURE__*/React.createElement("div", {
     key: i,
@@ -1752,7 +2079,18 @@ function Lobby({
       fontSize: 13,
       color: "#d9cba4"
     }
-  }, "Waiting for the host to start the game…")));
+  }, "Waiting for the host to start the game…"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 16
+    }
+  }, /*#__PURE__*/React.createElement("h4", {
+    style: hTitle
+  }, "Chat"), /*#__PURE__*/React.createElement(ChatPanel, {
+    state: state,
+    mutate: mutate,
+    clientId: clientId,
+    maxHeight: 140
+  }))));
 }
 
 /* ============================== MAIN BOARD VIEW =========================== */
@@ -1768,6 +2106,8 @@ function Board({
   const [zoom, setZoom] = useState(1);
   const [selectedTrade, setSelectedTrade] = useState(false);
   const [selectedDev, setSelectedDev] = useState(false);
+  const [selectedChat, setSelectedChat] = useState(false);
+  const [selectedGuide, setSelectedGuide] = useState(false);
   const [buildMode, setBuildMode] = useState(null); // 'road' | 'settlement' | 'city'
   const [pendingYearOfPlenty, setPendingYearOfPlenty] = useState(false);
   const [pendingMonopoly, setPendingMonopoly] = useState(false);
@@ -2091,7 +2431,36 @@ function Board({
     isRobber: board.robberHexId === h.id,
     onClick: () => handleHexClick(h.id),
     clickable: needsRobberMove
-  })), board.ports.map((p, i) => {
+  })), (board.cities || []).map((c, i) => {
+    const h = board.hexes.find(hx => hx.q === c.q && hx.r === c.r);
+    if (!h) return null;
+    return /*#__PURE__*/React.createElement("g", {
+      key: i,
+      style: {
+        pointerEvents: "none"
+      }
+    }, /*#__PURE__*/React.createElement("circle", {
+      cx: h.cx,
+      cy: h.cy,
+      r: 3,
+      fill: "#fff",
+      stroke: "#241c12",
+      strokeWidth: 1
+    }), /*#__PURE__*/React.createElement("text", {
+      x: h.cx,
+      y: h.cy - 7,
+      textAnchor: "middle",
+      fontSize: 9,
+      fontWeight: 700,
+      fill: "#fff",
+      stroke: "#241c12",
+      strokeWidth: 2.5,
+      paintOrder: "stroke",
+      style: {
+        fontFamily: "'Fraunces', serif"
+      }
+    }, c.name));
+  }), board.ports.map((p, i) => {
     const v1 = board.vertices.find(v => v.id === p.vertexIds[0]);
     const v2 = board.vertices.find(v => v.id === p.vertexIds[1]);
     const mx = (v1.x + v2.x) / 2,
@@ -2115,11 +2484,27 @@ function Board({
       stroke: "#7a6a4a",
       strokeWidth: 1.5,
       strokeDasharray: "2,2"
+    }), /*#__PURE__*/React.createElement("rect", {
+      x: mx - 1.8,
+      y: my + 8,
+      width: 3.6,
+      height: 9,
+      fill: "#5a4023",
+      stroke: "#2a1c10",
+      strokeWidth: 0.6
     }), /*#__PURE__*/React.createElement("polygon", {
       points: `${mx},${my - 15} ${mx + 14},${my + 9} ${mx - 14},${my + 9}`,
       fill: "#f7edd0",
       stroke: "#4a3220",
       strokeWidth: 1.5
+    }), /*#__PURE__*/React.createElement("line", {
+      x1: mx - 9,
+      y1: my + 3,
+      x2: mx + 9,
+      y2: my + 3,
+      stroke: "#c9b58a",
+      strokeWidth: 0.6,
+      opacity: 0.7
     }), /*#__PURE__*/React.createElement("text", {
       x: mx,
       y: my - 1,
@@ -2234,6 +2619,8 @@ function Board({
     mutate: mutate,
     setSelectedTrade: setSelectedTrade,
     setSelectedDev: setSelectedDev,
+    setSelectedChat: setSelectedChat,
+    setSelectedGuide: setSelectedGuide,
     pendingRoadBuilding: pendingRoadBuilding,
     nowTick: nowTick
   })), needsDiscard && /*#__PURE__*/React.createElement(DiscardModal, {
@@ -2259,7 +2646,21 @@ function Board({
     mutate: mutate,
     onClose: () => setSelectedDev(false),
     onRoadBuilding: () => setPendingRoadBuilding(2)
-  }));
+  }), selectedChat && /*#__PURE__*/React.createElement(ModalWrap, {
+    onClose: () => setSelectedChat(false)
+  }, /*#__PURE__*/React.createElement("h4", {
+    style: {
+      marginTop: 0,
+      color: "var(--gold)"
+    }
+  }, "Chat"), /*#__PURE__*/React.createElement(ChatPanel, {
+    state: state,
+    mutate: mutate,
+    clientId: clientId,
+    maxHeight: 260
+  })), selectedGuide && /*#__PURE__*/React.createElement(ModalWrap, {
+    onClose: () => setSelectedGuide(false)
+  }, /*#__PURE__*/React.createElement(BuildGuide, null)));
 }
 function TopBarAction({
   state,
@@ -2328,6 +2729,146 @@ function isValidRoadSpotOrSetup(state, board, edgeId, clientId) {
   }
   return isValidRoadSpot(board, edgeId, clientId);
 }
+function HexDecor({
+  hex
+}) {
+  const s = hex.size;
+  const positions = [{
+    x: hex.cx - s * 0.52,
+    y: hex.cy + s * 0.34
+  }, {
+    x: hex.cx + s * 0.52,
+    y: hex.cy + s * 0.34
+  }];
+  const r = hex.resource;
+  if (r === "wood") {
+    return /*#__PURE__*/React.createElement(React.Fragment, null, positions.map((p, i) => /*#__PURE__*/React.createElement("g", {
+      key: i,
+      opacity: 0.55
+    }, /*#__PURE__*/React.createElement("polygon", {
+      points: `${p.x},${p.y - 7} ${p.x - 5},${p.y + 3} ${p.x + 5},${p.y + 3}`,
+      fill: "#1f3d1a"
+    }), /*#__PURE__*/React.createElement("rect", {
+      x: p.x - 1,
+      y: p.y + 3,
+      width: 2,
+      height: 4,
+      fill: "#3a2414"
+    }))));
+  }
+  if (r === "brick") {
+    return /*#__PURE__*/React.createElement(React.Fragment, null, positions.map((p, i) => /*#__PURE__*/React.createElement("g", {
+      key: i,
+      opacity: 0.5,
+      stroke: "#5a1f00",
+      strokeWidth: 0.9,
+      fill: "none"
+    }, /*#__PURE__*/React.createElement("rect", {
+      x: p.x - 6,
+      y: p.y - 3,
+      width: 5,
+      height: 3
+    }), /*#__PURE__*/React.createElement("rect", {
+      x: p.x,
+      y: p.y - 3,
+      width: 5,
+      height: 3
+    }), /*#__PURE__*/React.createElement("rect", {
+      x: p.x - 3,
+      y: p.y,
+      width: 5,
+      height: 3
+    }))));
+  }
+  if (r === "sheep") {
+    return /*#__PURE__*/React.createElement(React.Fragment, null, positions.map((p, i) => /*#__PURE__*/React.createElement("g", {
+      key: i,
+      opacity: 0.65
+    }, /*#__PURE__*/React.createElement("circle", {
+      cx: p.x - 4,
+      cy: p.y,
+      r: 3.2,
+      fill: "#f5f0e0"
+    }), /*#__PURE__*/React.createElement("circle", {
+      cx: p.x,
+      cy: p.y - 2,
+      r: 3.6,
+      fill: "#f5f0e0"
+    }), /*#__PURE__*/React.createElement("circle", {
+      cx: p.x + 4,
+      cy: p.y,
+      r: 3.2,
+      fill: "#f5f0e0"
+    }))));
+  }
+  if (r === "wheat") {
+    return /*#__PURE__*/React.createElement(React.Fragment, null, positions.map((p, i) => /*#__PURE__*/React.createElement("g", {
+      key: i,
+      opacity: 0.65,
+      stroke: "#6b4a10",
+      strokeWidth: 1,
+      strokeLinecap: "round"
+    }, /*#__PURE__*/React.createElement("line", {
+      x1: p.x,
+      y1: p.y + 5,
+      x2: p.x,
+      y2: p.y - 5
+    }), /*#__PURE__*/React.createElement("line", {
+      x1: p.x,
+      y1: p.y - 3,
+      x2: p.x - 3,
+      y2: p.y - 6
+    }), /*#__PURE__*/React.createElement("line", {
+      x1: p.x,
+      y1: p.y - 3,
+      x2: p.x + 3,
+      y2: p.y - 6
+    }), /*#__PURE__*/React.createElement("line", {
+      x1: p.x,
+      y1: p.y,
+      x2: p.x - 3,
+      y2: p.y - 3
+    }), /*#__PURE__*/React.createElement("line", {
+      x1: p.x,
+      y1: p.y,
+      x2: p.x + 3,
+      y2: p.y - 3
+    }))));
+  }
+  if (r === "ore") {
+    return /*#__PURE__*/React.createElement(React.Fragment, null, positions.map((p, i) => /*#__PURE__*/React.createElement("polygon", {
+      key: i,
+      opacity: 0.55,
+      points: `${p.x - 5},${p.y + 4} ${p.x - 2},${p.y - 5} ${p.x + 2},${p.y - 2} ${p.x + 5},${p.y + 4}`,
+      fill: "#3a4147"
+    })));
+  }
+  if (r === "desert") {
+    return /*#__PURE__*/React.createElement(React.Fragment, null, positions.map((p, i) => /*#__PURE__*/React.createElement("g", {
+      key: i,
+      opacity: 0.5,
+      stroke: "#7a6420",
+      strokeWidth: 2,
+      strokeLinecap: "round"
+    }, /*#__PURE__*/React.createElement("line", {
+      x1: p.x,
+      y1: p.y + 5,
+      x2: p.x,
+      y2: p.y - 5
+    }), /*#__PURE__*/React.createElement("line", {
+      x1: p.x,
+      y1: p.y - 1,
+      x2: p.x - 4,
+      y2: p.y - 4
+    }), /*#__PURE__*/React.createElement("line", {
+      x1: p.x,
+      y1: p.y + 1,
+      x2: p.x + 4,
+      y2: p.y - 2
+    }))));
+  }
+  return null;
+}
 function HexTile({
   hex,
   isRobber,
@@ -2356,6 +2897,8 @@ function HexTile({
     fill: "none",
     stroke: "rgba(255,255,255,0.12)",
     strokeWidth: 1
+  }), /*#__PURE__*/React.createElement(HexDecor, {
+    hex: hex
   }), hex.resource === "gold" && /*#__PURE__*/React.createElement("text", {
     x: hex.cx,
     y: hex.cy - hex.size * 0.42,
@@ -2367,13 +2910,28 @@ function HexTile({
     textAnchor: "middle",
     fontSize: hex.size * 0.4,
     opacity: 0.5
-  }, "〜"), hex.number && /*#__PURE__*/React.createElement("g", null, /*#__PURE__*/React.createElement("circle", {
+  }, "〜"), hex.number && /*#__PURE__*/React.createElement("g", null, /*#__PURE__*/React.createElement("ellipse", {
+    cx: hex.cx,
+    cy: hex.cy + 2.5,
+    rx: 14,
+    ry: 13,
+    fill: "rgba(0,0,0,0.28)"
+  }), /*#__PURE__*/React.createElement("circle", {
     cx: hex.cx,
     cy: hex.cy,
-    r: 14,
+    r: 14.5,
     fill: "url(#tokenFace)",
     stroke: "#241c12",
     strokeWidth: 1.2
+  }), /*#__PURE__*/React.createElement("circle", {
+    cx: hex.cx,
+    cy: hex.cy,
+    r: 11.8,
+    fill: "none",
+    stroke: hex.number === 6 || hex.number === 8 ? "#b33a2e" : "#8a6d3b",
+    strokeWidth: 0.7,
+    strokeDasharray: "1.6,1.6",
+    opacity: 0.65
   }), /*#__PURE__*/React.createElement("text", {
     x: hex.cx,
     y: hex.cy + 4.5,
@@ -2683,6 +3241,8 @@ function SidePanel({
   mutate,
   setSelectedTrade,
   setSelectedDev,
+  setSelectedChat,
+  setSelectedGuide,
   pendingRoadBuilding,
   nowTick
 }) {
@@ -2797,7 +3357,23 @@ function SidePanel({
     variant: "ghost",
     disabled: !isMyTurn,
     onClick: () => setSelectedDev(true)
-  }, "Dev cards (", me.devCards.length, ")"))), state.phase === "playing" && /*#__PURE__*/React.createElement("div", {
+  }, "Dev cards (", me.devCards.length, ")"))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h4", {
+    style: hTitle
+  }, "More"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 6
+    }
+  }, /*#__PURE__*/React.createElement(Btn, {
+    small: true,
+    variant: "ghost",
+    onClick: () => setSelectedChat(true)
+  }, "💬 Chat"), /*#__PURE__*/React.createElement(Btn, {
+    small: true,
+    variant: "ghost",
+    onClick: () => setSelectedGuide(true)
+  }, "📖 Build guide"))), state.phase === "playing" && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 12,
       color: "#d9cba4"
@@ -2997,6 +3573,93 @@ function ModalWrap({
       fontSize: 22
     }
   }, "✕"), children));
+}
+function BuildGuide() {
+  const rows = [{
+    label: "Road",
+    icon: "🛣️",
+    cost: COSTS.road
+  }, {
+    label: "Settlement",
+    icon: "🏠",
+    cost: COSTS.settlement
+  }, {
+    label: "City",
+    icon: "🏛️",
+    cost: COSTS.city
+  }, {
+    label: "Dev card",
+    icon: "🎴",
+    cost: COSTS.dev
+  }];
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h4", {
+    style: {
+      marginTop: 0,
+      color: "var(--gold)"
+    }
+  }, "Build guide"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 12,
+      color: "#d9cba4",
+      marginTop: -6
+    }
+  }, "What each build costs, at a glance."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 8
+    }
+  }, rows.map(r => /*#__PURE__*/React.createElement("div", {
+    key: r.label,
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      background: "rgba(0,0,0,0.25)",
+      borderRadius: 8,
+      padding: "8px 12px"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontWeight: 700,
+      fontSize: 13
+    }
+  }, r.icon, " ", r.label), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 15,
+      letterSpacing: 1
+    }
+  }, Object.entries(r.cost).map(([res, n]) => /*#__PURE__*/React.createElement("span", {
+    key: res,
+    title: RES_LABEL[res],
+    style: {
+      marginLeft: 6
+    }
+  }, RES_ICON[res], "×", n)))))), /*#__PURE__*/React.createElement("h4", {
+    style: {
+      color: "var(--gold)",
+      marginTop: 18,
+      marginBottom: 6
+    }
+  }, "Ports"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 12,
+      color: "#d9cba4",
+      margin: 0
+    }
+  }, "⚓ 3:1 — trade any 3 of one resource for 1 of any other, at a generic dock.", /*#__PURE__*/React.createElement("br", null), "Resource icon ports (2:1) — trade 2 of that specific resource for 1 of any other."), /*#__PURE__*/React.createElement("h4", {
+    style: {
+      color: "var(--gold)",
+      marginTop: 18,
+      marginBottom: 6
+    }
+  }, "Victory points"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 12,
+      color: "#d9cba4",
+      margin: 0
+    }
+  }, "Settlement = 1 · City = 2 · Victory Point card = 1 · Longest Road = 2 · Largest Army = 2"));
 }
 function DiscardModal({
   state,
