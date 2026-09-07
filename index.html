@@ -112,6 +112,10 @@ const COSTS = {
     wood: 1,
     brick: 1
   },
+  ship: {
+    wood: 1,
+    sheep: 1
+  },
   settlement: {
     wood: 1,
     brick: 1,
@@ -135,7 +139,9 @@ const DEFAULT_OPTIONS = {
   winVp: 10,
   discardLimit: 7,
   friendlyRobber: false,
-  turnTimerSec: 0
+  turnTimerSec: 0,
+  seafarers: true,
+  allowUndo: false
 };
 const BANK_START = 19;
 const DEV_DECK = [...Array(14).fill("knight"), ...Array(5).fill("vp"), ...Array(2).fill("road_building"), ...Array(2).fill("year_of_plenty"), ...Array(2).fill("monopoly")];
@@ -1447,6 +1453,28 @@ function buildingAt(board, vertexId) {
 function roadOwnerAt(board, edgeId) {
   return board.roads[edgeId] || null;
 }
+function edgeTouchesResource(board, edgeId, predicate) {
+  const edge = board.edges.find(e => e.id === edgeId);
+  if (!edge) return false;
+  return (edge.hexIds || []).some(hi => board.hexes[hi] && predicate(board.hexes[hi].resource));
+}
+function edgeTouchesSea(board, edgeId) {
+  return edgeTouchesResource(board, edgeId, r => r === "sea");
+}
+function edgeTouchesLand(board, edgeId) {
+  return edgeTouchesResource(board, edgeId, r => r !== "sea");
+}
+function hasNetworkConnection(board, edgeId, playerId) {
+  const edge = board.edges.find(e => e.id === edgeId);
+  if (!edge) return false;
+  for (const v of [edge.v1, edge.v2]) {
+    const b = buildingAt(board, v);
+    if (b && b.owner === playerId) return true;
+    const others = vertexEdges(board, v).filter(e => e.id !== edgeId);
+    if (others.some(e => roadOwnerAt(board, e.id) === playerId) && (!b || b.owner === playerId)) return true;
+  }
+  return false;
+}
 function isValidSettlementSpot(board, vertexId, playerId, requireRoad) {
   if (buildingAt(board, vertexId)) return false;
   const adjEdges = vertexEdges(board, vertexId);
@@ -1461,16 +1489,22 @@ function isValidSettlementSpot(board, vertexId, playerId, requireRoad) {
   return true;
 }
 function isValidRoadSpot(board, edgeId, playerId) {
+  if (roadOwnerAt(board, edgeId)) return false;
+  if (!edgeTouchesLand(board, edgeId)) return false;
+  return hasNetworkConnection(board, edgeId, playerId);
+}
+function isValidShipSpot(board, edgeId, playerId) {
+  if (roadOwnerAt(board, edgeId)) return false;
+  if (!edgeTouchesSea(board, edgeId)) return false;
+  return hasNetworkConnection(board, edgeId, playerId);
+}
+function isMovableShip(board, edgeId, playerId) {
+  if ((board.roadTypes || {})[edgeId] !== "ship") return false;
+  if (roadOwnerAt(board, edgeId) !== playerId) return false;
   const edge = board.edges.find(e => e.id === edgeId);
   if (!edge) return false;
-  if (roadOwnerAt(board, edgeId)) return false;
-  for (const v of [edge.v1, edge.v2]) {
-    const b = buildingAt(board, v);
-    if (b && b.owner === playerId) return true;
-    const others = vertexEdges(board, v).filter(e => e.id !== edgeId);
-    if (others.some(e => roadOwnerAt(board, e.id) === playerId) && (!b || b.owner === playerId)) return true;
-  }
-  return false;
+  if (buildingAt(board, edge.v1) || buildingAt(board, edge.v2)) return false;
+  return true;
 }
 function hexResourcesForVertex(board, vertexId) {
   const v = board.vertices.find(x => x.id === vertexId);
@@ -1651,7 +1685,8 @@ function makePlayer(id, name, color, isBot, icon) {
     devPlayedThisTurn: false,
     roadsLeft: 15,
     settlementsLeft: 5,
-    citiesLeft: 4
+    citiesLeft: 4,
+    shipsLeft: 15
   };
 }
 function createNewGame(hostId, hostName, maxPlayers, mapId = "standard", options = {}, hostColor = null, hostIcon = null, mapOpts = {}) {
@@ -1665,6 +1700,7 @@ function createNewGame(hostId, hostName, maxPlayers, mapId = "standard", options
     ports: geo.ports,
     buildings: {},
     roads: {},
+    roadTypes: {},
     robberHexId: geo.robberHexId,
     cities: built.cities || []
   };
@@ -2303,6 +2339,32 @@ function OptionsPicker({
     }],
     onChange: v => set({
       turnTimerSec: v
+    })
+  }), /*#__PURE__*/React.createElement(OptionRow, {
+    label: "Seafarers (ships)",
+    value: optionsDraft.seafarers ?? true,
+    options: [{
+      value: true,
+      label: "On — build ships to cross water"
+    }, {
+      value: false,
+      label: "Off"
+    }],
+    onChange: v => set({
+      seafarers: v
+    })
+  }), /*#__PURE__*/React.createElement(OptionRow, {
+    label: "Allow undo",
+    value: optionsDraft.allowUndo ?? false,
+    options: [{
+      value: true,
+      label: "On — undo your last placement"
+    }, {
+      value: false,
+      label: "Off"
+    }],
+    onChange: v => set({
+      allowUndo: v
     })
   }));
 }
@@ -3005,7 +3067,8 @@ function Board({
   const [selectedDev, setSelectedDev] = useState(false);
   const [selectedChat, setSelectedChat] = useState(false);
   const [selectedGuide, setSelectedGuide] = useState(false);
-  const [buildMode, setBuildMode] = useState(null); // 'road' | 'settlement' | 'city'
+  const [buildMode, setBuildMode] = useState(null); // 'road' | 'ship' | 'settlement' | 'city' | 'moveShip'
+  const [movingShipFrom, setMovingShipFrom] = useState(null);
   const [pendingYearOfPlenty, setPendingYearOfPlenty] = useState(false);
   const [pendingMonopoly, setPendingMonopoly] = useState(false);
   const [pendingRoadBuilding, setPendingRoadBuilding] = useState(0);
@@ -3099,7 +3162,22 @@ function Board({
   const vbW = maxX - minX,
     vbH = maxY - minY;
   function doMutate(fn) {
-    mutate(fn);
+    if (state.options?.allowUndo) {
+      mutate(s => {
+        const before = structuredCloneSafe(s);
+        before.undoSnapshot = null;
+        const next = fn(s);
+        if (!next) return next;
+        next.undoSnapshot = {
+          forPlayer: clientId,
+          turnCounter: next.turnCounter,
+          snapshot: before
+        };
+        return next;
+      });
+    } else {
+      mutate(fn);
+    }
   }
   function handleVertexClick(vid) {
     if (state.phase === "setup") {
@@ -3127,21 +3205,44 @@ function Board({
     }
     if (!isMyTurn) return;
     if (pendingRoadBuilding > 0) {
-      if (!isValidRoadSpot(board, eid, clientId)) return;
+      const validRoad = isValidRoadSpot(board, eid, clientId);
+      const validShip = isValidShipSpot(board, eid, clientId);
+      if (!validRoad && !validShip) return;
+      const placeShip = !validRoad && validShip;
       doMutate(s => {
         s.board.roads[eid] = clientId;
+        s.board.roadTypes = s.board.roadTypes || {};
+        s.board.roadTypes[eid] = placeShip ? "ship" : "road";
         recalcLongestRoad(s);
         checkWinner(s);
-        addLog(s, `${playerName(s, clientId)} placed a free road.`);
+        addLog(s, `${playerName(s, clientId)} placed a free ${placeShip ? "ship" : "road"}.`);
         return s;
       });
       setPendingRoadBuilding(n => n - 1);
       return;
     }
-    if (state.turnPhase !== "main" || buildMode !== "road") return;
-    if (!isValidRoadSpot(board, eid, clientId)) return;
-    doMutate(s => buildRoad(s, clientId, eid));
-    setBuildMode(null);
+    if (state.turnPhase !== "main") return;
+    if (buildMode === "road") {
+      if (!isValidRoadSpot(board, eid, clientId)) return;
+      doMutate(s => buildRoad(s, clientId, eid));
+      setBuildMode(null);
+    } else if (buildMode === "ship") {
+      if (!isValidShipSpot(board, eid, clientId)) return;
+      doMutate(s => buildShip(s, clientId, eid));
+      setBuildMode(null);
+    } else if (buildMode === "moveShip") {
+      if (movingShipFrom === null) {
+        if (isMovableShip(board, eid, clientId)) setMovingShipFrom(eid);
+        return;
+      }
+      if (eid === movingShipFrom) {
+        setMovingShipFrom(null);
+        return;
+      }
+      doMutate(s => moveShip(s, clientId, movingShipFrom, eid));
+      setMovingShipFrom(null);
+      setBuildMode(null);
+    }
   }
   function handleHexClick(hexId) {
     if (needsRobberMove && hexId !== board.robberHexId) {
@@ -3421,8 +3522,42 @@ function Board({
     const v2 = board.vertices.find(v => v.id === e.v2);
     const owner = roadOwnerAt(board, e.id);
     const ownerColor = owner ? state.players.find(p => p.id === owner)?.color : null;
-    const active = state.phase === "setup" && isMyTurn && state.setupAwaitingRoad || buildMode === "road" && isMyTurn && state.turnPhase === "main" || pendingRoadBuilding > 0 && isMyTurn;
-    const valid = active && isValidRoadSpotOrSetup(state, board, e.id, clientId);
+    const pieceType = board.roadTypes && board.roadTypes[e.id] || "road";
+    const settingUp = state.phase === "setup" && isMyTurn && state.setupAwaitingRoad;
+    const freeRoadPhase = pendingRoadBuilding > 0 && isMyTurn;
+    const roadBuildActive = buildMode === "road" && isMyTurn && state.turnPhase === "main";
+    const shipBuildActive = buildMode === "ship" && isMyTurn && state.turnPhase === "main";
+    const shipMoveActive = buildMode === "moveShip" && isMyTurn && state.turnPhase === "main" && !state.shipMovedThisTurn;
+    const isSelectedForMove = movingShipFrom === e.id;
+    let valid = false;
+    let validIsShip = false;
+    if (settingUp) {
+      valid = isValidRoadSpotOrSetup(state, board, e.id, clientId);
+    } else if (freeRoadPhase) {
+      const vr = isValidRoadSpot(board, e.id, clientId);
+      const vs = isValidShipSpot(board, e.id, clientId);
+      valid = vr || vs;
+      validIsShip = !vr && vs;
+    } else if (roadBuildActive) {
+      valid = isValidRoadSpot(board, e.id, clientId);
+    } else if (shipBuildActive) {
+      valid = isValidShipSpot(board, e.id, clientId);
+      validIsShip = valid;
+    } else if (shipMoveActive) {
+      if (movingShipFrom === null) {
+        valid = isMovableShip(board, e.id, clientId);
+      } else {
+        valid = e.id === movingShipFrom || isValidShipSpot(board, e.id, clientId);
+        validIsShip = e.id !== movingShipFrom;
+      }
+    }
+    const mx = (v1.x + v2.x) / 2,
+      my = (v1.y + v2.y) / 2;
+    const dx = v2.x - v1.x,
+      dy = v2.y - v1.y;
+    const len = Math.sqrt(dx * dx + dy * dy) || 1;
+    const nx = -dy / len,
+      ny = dx / len;
     return /*#__PURE__*/React.createElement("g", {
       key: e.id
     }, valid && /*#__PURE__*/React.createElement("line", {
@@ -3437,7 +3572,39 @@ function Board({
         cursor: "pointer"
       },
       onClick: () => handleEdgeClick(e.id)
-    }), ownerColor && /*#__PURE__*/React.createElement("line", {
+    }), isSelectedForMove && /*#__PURE__*/React.createElement("line", {
+      x1: v1.x,
+      y1: v1.y,
+      x2: v2.x,
+      y2: v2.y,
+      stroke: "var(--gold)",
+      strokeWidth: 10,
+      strokeLinecap: "round",
+      opacity: 0.5
+    }), ownerColor && pieceType === "ship" ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("line", {
+      x1: v1.x,
+      y1: v1.y,
+      x2: v2.x,
+      y2: v2.y,
+      stroke: "#1c1610",
+      strokeWidth: 5.5,
+      strokeLinecap: "round",
+      strokeDasharray: "1,5"
+    }), /*#__PURE__*/React.createElement("line", {
+      x1: v1.x,
+      y1: v1.y,
+      x2: v2.x,
+      y2: v2.y,
+      stroke: ownerColor,
+      strokeWidth: 3.5,
+      strokeLinecap: "round",
+      strokeDasharray: "1,5"
+    }), /*#__PURE__*/React.createElement("polygon", {
+      points: `${mx + nx * 5},${my + ny * 5} ${mx - nx * 5},${my - ny * 5} ${mx + dx / len * 7},${my + dy / len * 7}`,
+      fill: ownerColor,
+      stroke: "#1c1610",
+      strokeWidth: 0.8
+    })) : ownerColor ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("line", {
       x1: v1.x,
       y1: v1.y,
       x2: v2.x,
@@ -3450,8 +3617,16 @@ function Board({
       y1: v1.y,
       x2: v2.x,
       y2: v2.y,
-      stroke: ownerColor || (valid ? "#b5502d" : "rgba(40,32,20,0.28)"),
-      strokeWidth: ownerColor ? 6 : valid ? 5 : 2.5,
+      stroke: ownerColor,
+      strokeWidth: 6,
+      strokeLinecap: "round"
+    })) : /*#__PURE__*/React.createElement("line", {
+      x1: v1.x,
+      y1: v1.y,
+      x2: v2.x,
+      y2: v2.y,
+      stroke: valid ? validIsShip ? "var(--blue)" : "#b5502d" : "rgba(40,32,20,0.28)",
+      strokeWidth: valid ? 5 : 2.5,
       strokeLinecap: "round",
       style: {
         pointerEvents: "none"
@@ -3513,6 +3688,8 @@ function Board({
     isMyTurn: isMyTurn,
     buildMode: buildMode,
     setBuildMode: setBuildMode,
+    movingShipFrom: movingShipFrom,
+    setMovingShipFrom: setMovingShipFrom,
     mutate: mutate,
     setSelectedTrade: setSelectedTrade,
     setSelectedDev: setSelectedDev,
@@ -3929,13 +4106,39 @@ function HexTile({
     fill: "#f2e8d0"
   }, cityName)), isRobber && /*#__PURE__*/React.createElement(RobberIcon, {
     cx: hex.cx,
-    cy: hex.cy - (hex.number ? 24 : 0)
+    cy: hex.cy - (hex.number ? 24 : 0),
+    isPirate: hex.resource === "sea"
   }));
 }
 function RobberIcon({
   cx,
-  cy
+  cy,
+  isPirate
 }) {
+  if (isPirate) {
+    return /*#__PURE__*/React.createElement("g", null, /*#__PURE__*/React.createElement("ellipse", {
+      cx: cx,
+      cy: cy + 6,
+      rx: 9,
+      ry: 3,
+      fill: "rgba(0,0,0,0.25)"
+    }), /*#__PURE__*/React.createElement("path", {
+      d: `M ${cx - 9} ${cy + 4} Q ${cx} ${cy + 9} ${cx + 9} ${cy + 4} L ${cx + 7} ${cy + 1} L ${cx - 7} ${cy + 1} Z`,
+      fill: "#241c12"
+    }), /*#__PURE__*/React.createElement("line", {
+      x1: cx,
+      y1: cy + 1,
+      x2: cx,
+      y2: cy - 11,
+      stroke: "#241c12",
+      strokeWidth: 1.4
+    }), /*#__PURE__*/React.createElement("polygon", {
+      points: `${cx},${cy - 11} ${cx + 7},${cy - 3} ${cx},${cy - 3}`,
+      fill: "#7a1f0a",
+      stroke: "#241c12",
+      strokeWidth: 0.6
+    }));
+  }
   return /*#__PURE__*/React.createElement("g", null, /*#__PURE__*/React.createElement("ellipse", {
     cx: cx,
     cy: cy + 7,
@@ -4294,7 +4497,20 @@ function TopBar({
     needsRobberMove: needsRobberMove,
     pendingRoadBuilding: pendingRoadBuilding,
     mutate: mutate
-  }), timerLabel && /*#__PURE__*/React.createElement("span", {
+  }), state.options?.allowUndo && state.undoSnapshot?.forPlayer === clientId && state.undoSnapshot?.turnCounter === state.turnCounter && /*#__PURE__*/React.createElement(Btn, {
+    small: true,
+    variant: "ghost",
+    onClick: () => mutate(s => {
+      if (!s.undoSnapshot || s.undoSnapshot.forPlayer !== clientId || s.undoSnapshot.turnCounter !== s.turnCounter) return s;
+      const restored = s.undoSnapshot.snapshot;
+      restored.undoSnapshot = null;
+      addLog(restored, `${playerName(restored, clientId)} undid their last move.`, {
+        forAll: true,
+        sound: "reject"
+      });
+      return restored;
+    })
+  }, "↩ Undo"), timerLabel && /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 12,
       fontWeight: 700,
@@ -4314,6 +4530,8 @@ function SidePanel({
   isMyTurn,
   buildMode,
   setBuildMode,
+  movingShipFrom,
+  setMovingShipFrom,
   mutate,
   setSelectedTrade,
   setSelectedDev,
@@ -4387,6 +4605,21 @@ function SidePanel({
     active: buildMode === "road",
     disabled: !canMain || !canAfford(me.resources, COSTS.road) || (me.roadsLeft ?? 15) <= 0,
     onClick: () => setBuildMode(buildMode === "road" ? null : "road")
+  }), state.options?.seafarers && /*#__PURE__*/React.createElement(BuildButton, {
+    label: `Ship (${me.shipsLeft ?? 15} left)`,
+    costIcons: "🌲🐑",
+    active: buildMode === "ship",
+    disabled: !canMain || !canAfford(me.resources, COSTS.ship) || (me.shipsLeft ?? 15) <= 0,
+    onClick: () => setBuildMode(buildMode === "ship" ? null : "ship")
+  }), state.options?.seafarers && /*#__PURE__*/React.createElement(BuildButton, {
+    label: movingShipFrom ? "Pick a destination…" : "Move a ship",
+    costIcons: "⛵",
+    active: buildMode === "moveShip",
+    disabled: !canMain || !!state.shipMovedThisTurn,
+    onClick: () => {
+      setMovingShipFrom(null);
+      setBuildMode(buildMode === "moveShip" ? null : "moveShip");
+    }
   }), /*#__PURE__*/React.createElement(BuildButton, {
     label: `Settlement (${me.settlementsLeft ?? 5} left)`,
     costIcons: "🌲🧱🌾🐑",
@@ -4659,6 +4892,10 @@ function BuildGuide() {
     icon: "🛣️",
     cost: COSTS.road
   }, {
+    label: "Ship",
+    icon: "⛵",
+    cost: COSTS.ship
+  }, {
     label: "Settlement",
     icon: "🏠",
     cost: COSTS.settlement
@@ -4715,6 +4952,18 @@ function BuildGuide() {
       marginLeft: 6
     }
   }, RES_ICON[res], "×", n)))))), /*#__PURE__*/React.createElement("h4", {
+    style: {
+      color: "var(--gold)",
+      marginTop: 18,
+      marginBottom: 6
+    }
+  }, "Ships (Seafarers)"), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 12,
+      color: "#d9cba4",
+      margin: 0
+    }
+  }, "Ships can only be built on edges touching water, and must connect to your existing roads, ships, settlements, or cities — same as roads. They count toward Longest Road. The pirate ship (the marauder, out on the water) works just like the robber."), /*#__PURE__*/React.createElement("h4", {
     style: {
       color: "var(--gold)",
       marginTop: 18,
@@ -5482,12 +5731,13 @@ function moveRobber(s, playerId, hexId) {
   s.board.robberHexId = hexId;
   s.robberMoveRequired = null;
   const hex = s.board.hexes.find(h => h.id === hexId);
+  const isPirate = hex.resource === "sea";
   const targets = new Set();
   hex.cornerIds.forEach(vid => {
     const b = s.board.buildings[vid];
     if (b && b.owner !== playerId) targets.add(b.owner);
   });
-  addLog(s, `${playerName(s, playerId)} moved the marauder.`);
+  addLog(s, `${playerName(s, playerId)} moved the ${isPirate ? "pirate ship" : "marauder"}.`);
   if (targets.size > 0 && !s.options?.friendlyRobber) {
     s.robberStealChoices = Array.from(targets);
   } else {
@@ -5522,8 +5772,53 @@ function buildRoad(s, playerId, eid) {
   p.resources = payCost(p.resources, COSTS.road);
   Object.entries(COSTS.road).forEach(([r, n]) => s.bank[r] += n);
   s.board.roads[eid] = playerId;
+  s.board.roadTypes = s.board.roadTypes || {};
+  s.board.roadTypes[eid] = "road";
   p.roadsLeft = (p.roadsLeft ?? 15) - 1;
   addLog(s, `${p.name} built a road.`, {
+    forAll: true,
+    sound: "build",
+    silent: true
+  });
+  recalcLongestRoad(s);
+  checkWinner(s);
+  return s;
+}
+function buildShip(s, playerId, eid) {
+  const p = s.players.find(pl => pl.id === playerId);
+  if (!canAfford(p.resources, COSTS.ship)) return s;
+  if ((p.shipsLeft ?? 15) <= 0) return s;
+  if (!isValidShipSpot(s.board, eid, playerId)) return s;
+  p.resources = payCost(p.resources, COSTS.ship);
+  Object.entries(COSTS.ship).forEach(([r, n]) => s.bank[r] += n);
+  s.board.roads[eid] = playerId;
+  s.board.roadTypes = s.board.roadTypes || {};
+  s.board.roadTypes[eid] = "ship";
+  p.shipsLeft = (p.shipsLeft ?? 15) - 1;
+  addLog(s, `${p.name} built a ship.`, {
+    forAll: true,
+    sound: "build",
+    silent: true
+  });
+  recalcLongestRoad(s);
+  checkWinner(s);
+  return s;
+}
+function moveShip(s, playerId, fromEdgeId, toEdgeId) {
+  if (s.shipMovedThisTurn) return s;
+  if (!isMovableShip(s.board, fromEdgeId, playerId)) return s;
+  if (fromEdgeId === toEdgeId) return s;
+  delete s.board.roads[fromEdgeId];
+  delete s.board.roadTypes[fromEdgeId];
+  if (!isValidShipSpot(s.board, toEdgeId, playerId)) {
+    s.board.roads[fromEdgeId] = playerId;
+    s.board.roadTypes[fromEdgeId] = "ship";
+    return s;
+  }
+  s.board.roads[toEdgeId] = playerId;
+  s.board.roadTypes[toEdgeId] = "ship";
+  s.shipMovedThisTurn = true;
+  addLog(s, `${playerName(s, playerId)} moved a ship.`, {
     forAll: true,
     sound: "build",
     silent: true
@@ -5713,6 +6008,7 @@ function endTurn(s) {
   s.diceRoll = null;
   s.tradeOffers = [];
   s.blockedTraders = [];
+  s.shipMovedThisTurn = false;
   s.currentIndex = (s.currentIndex + 1) % s.turnOrder.length;
   s.turnPhase = "roll";
   s.turnStartedAt = Date.now();
@@ -5920,6 +6216,13 @@ function botDoFullTurn(s, botId) {
     if (canAfford(player.resources, COSTS.road) && openRoads.length && guard < 4 && (player.roadsLeft ?? 15) > 0) {
       buildRoad(s, botId, openRoads[Math.floor(Math.random() * openRoads.length)].id);
       continue;
+    }
+    if (s.options?.seafarers) {
+      const openShips = s.board.edges.filter(e => isValidShipSpot(s.board, e.id, botId));
+      if (canAfford(player.resources, COSTS.ship) && openShips.length && guard < 4 && (player.shipsLeft ?? 15) > 0) {
+        buildShip(s, botId, openShips[Math.floor(Math.random() * openShips.length)].id);
+        continue;
+      }
     }
     if (canAfford(player.resources, COSTS.dev) && s.devDeck.length > 0 && guard < 6) {
       player.resources = payCost(player.resources, COSTS.dev);
