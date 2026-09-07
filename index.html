@@ -141,10 +141,15 @@ const DEFAULT_OPTIONS = {
   friendlyRobber: false,
   turnTimerSec: 0,
   seafarers: true,
-  allowUndo: false
+  allowUndo: false,
+  megalopolis: false
 };
 const BANK_START = 19;
-const DEV_DECK = [...Array(14).fill("knight"), ...Array(5).fill("vp"), ...Array(2).fill("road_building"), ...Array(2).fill("year_of_plenty"), ...Array(2).fill("monopoly")];
+function buildDevDeck(options) {
+  const deck = [...Array(14).fill("knight"), ...Array(5).fill("vp"), ...Array(2).fill("road_building"), ...Array(2).fill("year_of_plenty"), ...Array(2).fill("monopoly")];
+  if (options?.megalopolis) deck.push(...Array(2).fill("megalopolis"));
+  return deck;
+}
 const NUMBER_BASE = [2, 3, 3, 4, 4, 5, 5, 6, 6, 8, 8, 9, 9, 10, 10, 11, 11, 12];
 const DOTS = {
   2: 1,
@@ -1693,6 +1698,10 @@ function createNewGame(hostId, hostName, maxPlayers, mapId = "standard", options
   const map = MAPS[mapId] || MAPS.standard;
   const built = map.build(maxPlayers, mapOpts);
   const geo = assignBoard(built.coords, built.size, built);
+  const mergedOptions = {
+    ...DEFAULT_OPTIONS,
+    ...options
+  };
   const board = {
     hexes: geo.hexes,
     vertices: geo.vertices,
@@ -1708,10 +1717,7 @@ function createNewGame(hostId, hostName, maxPlayers, mapId = "standard", options
     code: uid(5),
     maxPlayers,
     mapId,
-    options: {
-      ...DEFAULT_OPTIONS,
-      ...options
-    },
+    options: mergedOptions,
     phase: "lobby",
     players: [makePlayer(hostId, hostName, hostColor || PLAYER_COLORS[0], false, hostIcon)],
     board,
@@ -1722,7 +1728,7 @@ function createNewGame(hostId, hostName, maxPlayers, mapId = "standard", options
       wheat: BANK_START,
       ore: BANK_START
     },
-    devDeck: shuffle(DEV_DECK),
+    devDeck: shuffle(buildDevDeck(mergedOptions)),
     turnOrder: [],
     currentIndex: 0,
     turnCounter: 0,
@@ -1789,6 +1795,18 @@ function sendChatMessage(state, playerId, name, text) {
     text: clean,
     ts: Date.now()
   }];
+  return state;
+}
+function renamePlayer(state, playerId, newName) {
+  const clean = (newName || "").trim().slice(0, 20);
+  if (!clean) return state;
+  const p = state.players.find(pl => pl.id === playerId);
+  if (!p || p.name === clean) return state;
+  const old = p.name;
+  p.name = clean;
+  addLog(state, `${old} is now known as ${clean}.`, {
+    forAll: true
+  });
   return state;
 }
 function recordGain(state, playerId, resource, hexId) {
@@ -2365,6 +2383,19 @@ function OptionsPicker({
     }],
     onChange: v => set({
       allowUndo: v
+    })
+  }), /*#__PURE__*/React.createElement(OptionRow, {
+    label: "Megalopolis card (house rule)",
+    value: optionsDraft.megalopolis ?? false,
+    options: [{
+      value: true,
+      label: "On — adds a dev card: free city + road, anywhere"
+    }, {
+      value: false,
+      label: "Off"
+    }],
+    onChange: v => set({
+      megalopolis: v
     })
   }));
 }
@@ -3072,6 +3103,7 @@ function Board({
   const [pendingYearOfPlenty, setPendingYearOfPlenty] = useState(false);
   const [pendingMonopoly, setPendingMonopoly] = useState(false);
   const [pendingRoadBuilding, setPendingRoadBuilding] = useState(0);
+  const [megaStage, setMegaStage] = useState(null); // null | 'city' | 'road'
   const [nowTick, setNowTick] = useState(Date.now());
   const [flyingCards, setFlyingCards] = useState([]);
   const wrapperRef = useRef(null);
@@ -3186,6 +3218,28 @@ function Board({
       return;
     }
     if (!isMyTurn || state.turnPhase !== "main") return;
+    if (megaStage === "city") {
+      if (buildingAt(board, vid)) return;
+      doMutate(s => {
+        const p = s.players.find(pl => pl.id === clientId);
+        if ((p.citiesLeft ?? 4) > 0) {
+          s.board.buildings[vid] = {
+            owner: clientId,
+            type: "city"
+          };
+          p.citiesLeft -= 1;
+          addLog(s, `${p.name} conjured up a Megalopolis city.`, {
+            forAll: true,
+            kind: "achievement",
+            sound: "build"
+          });
+          checkWinner(s);
+        }
+        return s;
+      });
+      setMegaStage("road");
+      return;
+    }
     if (buildMode === "settlement") {
       if (!isValidSettlementSpot(board, vid, clientId, true)) return;
       doMutate(s => buildSettlement(s, clientId, vid));
@@ -3204,6 +3258,28 @@ function Board({
       return;
     }
     if (!isMyTurn) return;
+    if (megaStage === "road") {
+      if (roadOwnerAt(board, eid)) return;
+      doMutate(s => {
+        const p = s.players.find(pl => pl.id === clientId);
+        if ((p.roadsLeft ?? 15) > 0) {
+          s.board.roads[eid] = clientId;
+          s.board.roadTypes = s.board.roadTypes || {};
+          s.board.roadTypes[eid] = "road";
+          p.roadsLeft -= 1;
+          addLog(s, `${p.name} conjured up a Megalopolis road.`, {
+            forAll: true,
+            kind: "achievement",
+            sound: "build"
+          });
+          recalcLongestRoad(s);
+          checkWinner(s);
+        }
+        return s;
+      });
+      setMegaStage(null);
+      return;
+    }
     if (pendingRoadBuilding > 0) {
       const validRoad = isValidRoadSpot(board, eid, clientId);
       const validShip = isValidShipSpot(board, eid, clientId);
@@ -3307,7 +3383,22 @@ function Board({
     }
   }, /*#__PURE__*/React.createElement(ToastStack, {
     toasts: toasts
-  }), /*#__PURE__*/React.createElement("div", {
+  }), megaStage && /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "absolute",
+      top: 8,
+      left: "50%",
+      transform: "translateX(-50%)",
+      zIndex: 31,
+      background: "linear-gradient(180deg, #f2f278, #c8c840)",
+      color: "#2a1c05",
+      padding: "6px 14px",
+      borderRadius: 8,
+      fontSize: 13,
+      fontWeight: 700,
+      boxShadow: "0 4px 14px rgba(0,0,0,0.4)"
+    }
+  }, "🏙️ Megalopolis — tap anywhere on the board to place a free ", megaStage === "city" ? "city" : "road"), /*#__PURE__*/React.createElement("div", {
     style: {
       position: "absolute",
       top: 8,
@@ -3550,6 +3641,8 @@ function Board({
         valid = e.id === movingShipFrom || isValidShipSpot(board, e.id, clientId);
         validIsShip = e.id !== movingShipFrom;
       }
+    } else if (megaStage === "road" && isMyTurn && state.turnPhase === "main") {
+      valid = !owner;
     }
     const mx = (v1.x + v2.x) / 2,
       my = (v1.y + v2.y) / 2;
@@ -3634,10 +3727,12 @@ function Board({
     }));
   }), board.vertices.map(v => {
     const b = buildingAt(board, v.id);
-    const active = state.phase === "setup" && isMyTurn && !state.setupAwaitingRoad || (buildMode === "settlement" || buildMode === "city") && isMyTurn && state.turnPhase === "main";
+    const active = state.phase === "setup" && isMyTurn && !state.setupAwaitingRoad || (buildMode === "settlement" || buildMode === "city") && isMyTurn && state.turnPhase === "main" || megaStage === "city" && isMyTurn && state.turnPhase === "main";
     const requireRoad = state.phase !== "setup";
     let valid = false;
-    if (active) {
+    if (megaStage === "city" && isMyTurn && state.turnPhase === "main") {
+      valid = !b;
+    } else if (active) {
       if (buildMode === "city") valid = b && b.owner === clientId && b.type === "settlement";else valid = isValidSettlementSpot(board, v.id, clientId, requireRoad);
     }
     const ownerColor = b ? state.players.find(p => p.id === b.owner)?.color : null;
@@ -3719,7 +3814,8 @@ function Board({
     me: me,
     mutate: mutate,
     onClose: () => setSelectedDev(false),
-    onRoadBuilding: () => setPendingRoadBuilding(2)
+    onRoadBuilding: () => setPendingRoadBuilding(2),
+    onMegalopolis: () => setMegaStage("city")
   }), selectedChat && /*#__PURE__*/React.createElement(ModalWrap, {
     onClose: () => setSelectedChat(false)
   }, /*#__PURE__*/React.createElement("h4", {
@@ -4699,7 +4795,9 @@ function SidePanel({
     p: p,
     isCurrent: p.id === currentId,
     vp: computeVictoryPoints(state, p),
-    timerLabel: p.id === currentId ? timerLabel : null
+    timerLabel: p.id === currentId ? timerLabel : null,
+    isMe: p.id === clientId,
+    mutate: mutate
   })))), /*#__PURE__*/React.createElement("div", {
     className: "lf-sidebar-log"
   }, /*#__PURE__*/React.createElement("h4", {
@@ -4720,9 +4818,18 @@ function PlayerListRow({
   p,
   isCurrent,
   vp,
-  timerLabel
+  timerLabel,
+  isMe,
+  mutate
 }) {
   const initials = p.name.slice(0, 2).toUpperCase();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(p.name);
+  function submit() {
+    const clean = draft.trim().slice(0, 20);
+    if (clean && clean !== p.name) mutate(s => renamePlayer(s, p.id, clean));
+    setEditing(false);
+  }
   return /*#__PURE__*/React.createElement("div", {
     id: `player-${p.id}`,
     style: {
@@ -4741,16 +4848,41 @@ function PlayerListRow({
       borderRadius: "50%",
       background: p.color,
       color: "#fff",
-      fontSize: 10,
+      fontSize: 13,
       fontWeight: 700,
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
       border: "1px solid rgba(0,0,0,0.4)",
-      flexShrink: 0,
-      fontSize: 13
+      flexShrink: 0
     }
-  }, p.icon || initials), /*#__PURE__*/React.createElement("span", {
+  }, p.icon || initials), editing ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 4,
+      flex: 1,
+      minWidth: 0
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    autoFocus: true,
+    value: draft,
+    onChange: e => setDraft(e.target.value),
+    onKeyDown: e => {
+      if (e.key === "Enter") submit();
+      if (e.key === "Escape") setEditing(false);
+    },
+    maxLength: 20,
+    style: {
+      flex: 1,
+      minWidth: 0,
+      padding: "3px 6px",
+      fontSize: 12,
+      borderRadius: 6
+    }
+  }), /*#__PURE__*/React.createElement(Btn, {
+    small: true,
+    onClick: submit
+  }, "✓")) : /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 13,
       fontWeight: isCurrent ? 700 : 500,
@@ -4760,7 +4892,21 @@ function PlayerListRow({
       textOverflow: "ellipsis",
       whiteSpace: "nowrap"
     }
-  }, p.name, p.isBot ? " · AI" : ""), /*#__PURE__*/React.createElement("span", {
+  }, p.name, p.isBot ? " · AI" : "", isMe && /*#__PURE__*/React.createElement("button", {
+    onClick: () => {
+      setDraft(p.name);
+      setEditing(true);
+    },
+    title: "Change your name",
+    style: {
+      background: "none",
+      border: "none",
+      color: "#a89a7e",
+      fontSize: 11,
+      marginLeft: 4,
+      padding: 0
+    }
+  }, "✏️")), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 11,
       color: "#d9cba4",
@@ -5469,7 +5615,8 @@ function DevCardModal({
   me,
   mutate,
   onClose,
-  onRoadBuilding
+  onRoadBuilding,
+  onMegalopolis
 }) {
   const [monopolyPick, setMonopolyPick] = useState(null);
   const [yopPicks, setYopPicks] = useState([]);
@@ -5585,6 +5732,7 @@ function DevCardModal({
       small: true,
       onClick: () => {
         if (c.type === "road_building") onRoadBuilding();
+        if (c.type === "megalopolis") onMegalopolis();
         playCard(c);
         onClose();
       }
@@ -5597,7 +5745,8 @@ function cardLabel(type) {
     vp: "⭐ Victory Point",
     road_building: "🛣️ Road Building",
     year_of_plenty: "🎁 Year of Plenty",
-    monopoly: "📈 Monopoly"
+    monopoly: "📈 Monopoly",
+    megalopolis: "🏙️ Megalopolis"
   }[type];
 }
 
