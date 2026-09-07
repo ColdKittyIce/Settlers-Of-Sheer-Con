@@ -361,11 +361,12 @@ function createSFX() {
     vol = 0.15,
     freq = 1200,
     freqEnd,
-    type = "lowpass"
+    type = "lowpass",
+    delay = 0
   }) {
     ensure();
     if (!ctx || !master) return;
-    const t0 = ctx.currentTime;
+    const t0 = ctx.currentTime + delay;
     const len = Math.max(1, Math.floor(ctx.sampleRate * dur));
     const buf = ctx.createBuffer(1, len, ctx.sampleRate);
     const d = buf.getChannelData(0);
@@ -430,20 +431,29 @@ function createSFX() {
         delay: 0.22
       });
     },
+    // Heavy thud when placing a piece
     build() {
       tone({
         type: "sine",
-        freq: 160,
-        freqEnd: 90,
-        dur: 0.14,
-        vol: 0.3
+        freq: 100,
+        freqEnd: 45,
+        dur: 0.18,
+        vol: 0.4
+      });
+      tone({
+        type: "triangle",
+        freq: 60,
+        freqEnd: 40,
+        dur: 0.15,
+        vol: 0.25,
+        delay: 0.005
       });
       noise({
-        dur: 0.05,
-        vol: 0.13,
-        freq: 1800,
-        freqEnd: 400,
-        type: "highpass"
+        dur: 0.09,
+        vol: 0.22,
+        freq: 400,
+        freqEnd: 120,
+        type: "lowpass"
       });
     },
     accept() {
@@ -499,20 +509,22 @@ function createSFX() {
         delay: 0.09
       });
     },
+    // Steal victim — quick woosh + sting
     steal() {
+      noise({
+        dur: 0.18,
+        vol: 0.2,
+        freq: 2400,
+        freqEnd: 400,
+        type: "bandpass"
+      });
       tone({
         type: "sawtooth",
-        freq: 200,
-        freqEnd: 70,
-        dur: 0.24,
-        vol: 0.22
-      });
-      noise({
-        dur: 0.15,
-        vol: 0.13,
-        freq: 500,
-        freqEnd: 150,
-        type: "lowpass"
+        freq: 260,
+        freqEnd: 90,
+        dur: 0.26,
+        vol: 0.22,
+        delay: 0.08
       });
     },
     achievement() {
@@ -524,18 +536,481 @@ function createSFX() {
         delay: i * 0.1
       }));
     },
+    // Victory — big roar-like growl followed by a fanfare
     victory() {
+      // Roar: filtered noise growl with pitch sweep
+      noise({
+        dur: 0.8,
+        vol: 0.35,
+        freq: 500,
+        freqEnd: 200,
+        type: "lowpass"
+      });
+      tone({
+        type: "sawtooth",
+        freq: 95,
+        freqEnd: 55,
+        dur: 0.8,
+        vol: 0.28
+      });
+      // Second growl layer with slight wobble via short bursts
+      for (let i = 0; i < 6; i++) tone({
+        type: "sawtooth",
+        freq: 100 - i * 5,
+        freqEnd: 70 - i * 4,
+        dur: 0.14,
+        vol: 0.14,
+        delay: 0.1 + i * 0.11
+      });
+      // Fanfare
       [523, 659, 784, 1047, 1319].forEach((f, i) => tone({
         type: "triangle",
         freq: f,
-        dur: 0.2,
-        vol: 0.25,
-        delay: i * 0.12
+        dur: 0.22,
+        vol: 0.28,
+        delay: 0.9 + i * 0.14
       }));
+    },
+    // Robber moved — descending "heh-heh-heh" cackle
+    evilLaugh() {
+      const pitches = [560, 470, 400, 330, 380, 310];
+      pitches.forEach((p, i) => {
+        tone({
+          type: "square",
+          freq: p,
+          freqEnd: p * 0.85,
+          dur: 0.09,
+          vol: 0.16,
+          delay: i * 0.11
+        });
+        tone({
+          type: "triangle",
+          freq: p * 0.5,
+          dur: 0.09,
+          vol: 0.09,
+          delay: i * 0.11
+        });
+      });
+      // Low menacing drone underneath
+      tone({
+        type: "sawtooth",
+        freq: 80,
+        freqEnd: 60,
+        dur: 0.7,
+        vol: 0.13
+      });
+    },
+    // Sad hollow thud for discard-after-7
+    sadThud() {
+      tone({
+        type: "sine",
+        freq: 65,
+        freqEnd: 38,
+        dur: 0.35,
+        vol: 0.42
+      });
+      tone({
+        type: "sine",
+        freq: 55,
+        freqEnd: 32,
+        dur: 0.28,
+        vol: 0.22,
+        delay: 0.22
+      });
+      tone({
+        type: "sine",
+        freq: 45,
+        freqEnd: 28,
+        dur: 0.24,
+        vol: 0.14,
+        delay: 0.42
+      });
+    },
+    // Game-start trumpet fanfare
+    fanfare() {
+      const notes = [{
+        f: 392,
+        d: 0.13
+      }, {
+        f: 523,
+        d: 0.13
+      }, {
+        f: 659,
+        d: 0.13
+      }, {
+        f: 784,
+        d: 0.18
+      }, {
+        f: 1047,
+        d: 0.42
+      }];
+      let t = 0;
+      notes.forEach(n => {
+        // Brass-like: sawtooth + slightly detuned second oscillator
+        tone({
+          type: "sawtooth",
+          freq: n.f,
+          dur: n.d,
+          vol: 0.24,
+          delay: t
+        });
+        tone({
+          type: "sawtooth",
+          freq: n.f * 1.005,
+          dur: n.d,
+          vol: 0.16,
+          delay: t
+        });
+        tone({
+          type: "square",
+          freq: n.f * 0.5,
+          dur: n.d,
+          vol: 0.08,
+          delay: t
+        });
+        t += n.d * 0.9;
+      });
+    },
+    // Chat message received — subtle high pop
+    chatBlip() {
+      tone({
+        type: "sine",
+        freq: 1200,
+        freqEnd: 900,
+        dur: 0.06,
+        vol: 0.18
+      });
+      tone({
+        type: "sine",
+        freq: 1800,
+        dur: 0.04,
+        vol: 0.1,
+        delay: 0.02
+      });
+    },
+    // Development card played — soft chime with a card-slide edge
+    devCard() {
+      noise({
+        dur: 0.08,
+        vol: 0.16,
+        freq: 3200,
+        freqEnd: 1200,
+        type: "highpass"
+      });
+      tone({
+        type: "sine",
+        freq: 1200,
+        dur: 0.14,
+        vol: 0.16,
+        delay: 0.03
+      });
+      tone({
+        type: "sine",
+        freq: 1800,
+        dur: 0.14,
+        vol: 0.12,
+        delay: 0.03
+      });
+      tone({
+        type: "sine",
+        freq: 2400,
+        dur: 0.14,
+        vol: 0.09,
+        delay: 0.03
+      });
+    },
+    // Cards dealt — woosh
+    deal() {
+      noise({
+        dur: 0.22,
+        vol: 0.22,
+        freq: 400,
+        freqEnd: 1800,
+        type: "bandpass"
+      });
+      noise({
+        dur: 0.18,
+        vol: 0.18,
+        freq: 1800,
+        freqEnd: 500,
+        type: "bandpass",
+        delay: 0.16
+      });
+    },
+    // Largest army — crowd chant (rhythmic pulses)
+    chant() {
+      for (let i = 0; i < 4; i++) {
+        const t0 = i * 0.22;
+        // Voice-like tone burst
+        tone({
+          type: "sawtooth",
+          freq: 260 + i % 2 * 40,
+          freqEnd: 240 + i % 2 * 40,
+          dur: 0.16,
+          vol: 0.18,
+          delay: t0
+        });
+        tone({
+          type: "triangle",
+          freq: 130 + i % 2 * 20,
+          dur: 0.16,
+          vol: 0.12,
+          delay: t0
+        });
+        // Crowd-noise underlayer
+        noise({
+          dur: 0.15,
+          vol: 0.14,
+          freq: 300,
+          freqEnd: 800,
+          type: "bandpass",
+          delay: t0
+        });
+      }
+      // Distant hum tail
+      tone({
+        type: "sawtooth",
+        freq: 90,
+        freqEnd: 60,
+        dur: 0.9,
+        vol: 0.08
+      });
+    },
+    // Longest road — car whoosh (Doppler)
+    carPass() {
+      // Approaching (rising)
+      noise({
+        dur: 0.4,
+        vol: 0.24,
+        freq: 200,
+        freqEnd: 1400,
+        type: "bandpass"
+      });
+      tone({
+        type: "sawtooth",
+        freq: 60,
+        freqEnd: 90,
+        dur: 0.4,
+        vol: 0.16
+      });
+      // Passing (peak)
+      tone({
+        type: "sawtooth",
+        freq: 130,
+        dur: 0.15,
+        vol: 0.14,
+        delay: 0.35
+      });
+      // Receding (falling)
+      noise({
+        dur: 0.4,
+        vol: 0.22,
+        freq: 1200,
+        freqEnd: 260,
+        type: "bandpass",
+        delay: 0.4
+      });
+      tone({
+        type: "sawtooth",
+        freq: 85,
+        freqEnd: 55,
+        dur: 0.4,
+        vol: 0.14,
+        delay: 0.4
+      });
+    },
+    // Joke trade (1:1 same resource) — classic sad trombone
+    jokeTrade() {
+      // Wah-wah-waaaaah
+      tone({
+        type: "sawtooth",
+        freq: 466,
+        freqEnd: 415,
+        dur: 0.22,
+        vol: 0.28
+      });
+      tone({
+        type: "sawtooth",
+        freq: 233,
+        freqEnd: 208,
+        dur: 0.22,
+        vol: 0.14
+      }); // sub-octave for brass
+      tone({
+        type: "sawtooth",
+        freq: 392,
+        freqEnd: 349,
+        dur: 0.22,
+        vol: 0.28,
+        delay: 0.24
+      });
+      tone({
+        type: "sawtooth",
+        freq: 196,
+        freqEnd: 175,
+        dur: 0.22,
+        vol: 0.14,
+        delay: 0.24
+      });
+      tone({
+        type: "sawtooth",
+        freq: 311,
+        freqEnd: 220,
+        dur: 0.65,
+        vol: 0.32,
+        delay: 0.48
+      });
+      tone({
+        type: "sawtooth",
+        freq: 156,
+        freqEnd: 110,
+        dur: 0.65,
+        vol: 0.16,
+        delay: 0.48
+      });
     }
   };
 }
 const sfx = createSFX();
+const MUSIC_STATIONS = {
+  groovesalad: {
+    name: "Groove Salad",
+    desc: "Chill downtempo",
+    url: "https://ice1.somafm.com/groovesalad-128-mp3"
+  },
+  secretagent: {
+    name: "Secret Agent",
+    desc: "Spy jazz & lounge",
+    url: "https://ice1.somafm.com/secretagent-128-mp3"
+  },
+  deepspaceone: {
+    name: "Deep Space One",
+    desc: "Deep ambient",
+    url: "https://ice1.somafm.com/deepspaceone-128-mp3"
+  },
+  bootliquor: {
+    name: "Boot Liquor",
+    desc: "Americana & roots",
+    url: "https://ice1.somafm.com/bootliquor-128-mp3"
+  },
+  doomed: {
+    name: "Doomed",
+    desc: "Dark ambient & goth",
+    url: "https://ice1.somafm.com/doomed-128-mp3"
+  }
+};
+function createMusic() {
+  let audio = null;
+  let station = "groovesalad";
+  let playing = false;
+  let volume = 0.4;
+  let muted = false;
+  const listeners = new Set();
+  function emit() {
+    listeners.forEach(cb => cb({
+      station,
+      playing,
+      volume,
+      muted
+    }));
+  }
+  try {
+    const v = localStorage.getItem("landfall-music-volume");
+    if (v !== null) {
+      const p = parseFloat(v);
+      if (!isNaN(p)) volume = Math.max(0, Math.min(1, p));
+    }
+    muted = localStorage.getItem("landfall-music-muted") === "true";
+    const s = localStorage.getItem("landfall-music-station");
+    if (s && MUSIC_STATIONS[s]) station = s;
+  } catch (e) {
+    /* no localStorage available */
+  }
+  function ensureAudio() {
+    if (audio) return;
+    audio = new Audio();
+    audio.preload = "none";
+    audio.volume = muted ? 0 : volume;
+    audio.addEventListener("playing", () => {
+      playing = true;
+      emit();
+    });
+    audio.addEventListener("pause", () => {
+      playing = false;
+      emit();
+    });
+    audio.addEventListener("error", () => {
+      playing = false;
+      emit();
+    });
+    audio.src = MUSIC_STATIONS[station].url;
+  }
+  return {
+    subscribe(cb) {
+      listeners.add(cb);
+      cb({
+        station,
+        playing,
+        volume,
+        muted
+      });
+      return () => listeners.delete(cb);
+    },
+    setStation(id) {
+      if (!MUSIC_STATIONS[id]) return;
+      station = id;
+      try {
+        localStorage.setItem("landfall-music-station", id);
+      } catch (e) {
+        /* no localStorage available */
+      }
+      if (audio) {
+        const wasPlaying = playing;
+        audio.pause();
+        audio.src = MUSIC_STATIONS[id].url;
+        if (wasPlaying) audio.play().catch(() => {});
+      }
+      emit();
+    },
+    play() {
+      ensureAudio();
+      audio.play().catch(() => {
+        playing = false;
+        emit();
+      });
+    },
+    pause() {
+      if (audio) audio.pause();
+    },
+    setVolume(v) {
+      volume = Math.max(0, Math.min(1, v));
+      try {
+        localStorage.setItem("landfall-music-volume", String(volume));
+      } catch (e) {
+        /* no localStorage available */
+      }
+      if (audio && !muted) audio.volume = volume;
+      emit();
+    },
+    setMuted(m) {
+      muted = !!m;
+      try {
+        localStorage.setItem("landfall-music-muted", String(muted));
+      } catch (e) {
+        /* no localStorage available */
+      }
+      if (audio) audio.volume = muted ? 0 : volume;
+      emit();
+    },
+    getState: () => ({
+      station,
+      playing,
+      volume,
+      muted
+    })
+  };
+}
+const music = createMusic();
 if (typeof document !== "undefined") {
   ["pointerdown", "keydown", "touchstart"].forEach(evt => document.addEventListener(evt, () => sfx.unlock(), {
     passive: true
@@ -1999,6 +2474,33 @@ function Landfall() {
   const [code, setCode] = useState(null);
   const [lastCode, setLastCode] = useState(null);
   const [theme, setTheme] = useTheme();
+  const [customTheme, setCustomTheme] = useState(null);
+  const [devMode, setDevMode] = useState(false);
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("landfall-custom-theme");
+      if (stored) setCustomTheme(JSON.parse(stored));
+      setDevMode(localStorage.getItem("landfall-dev-mode") === "true");
+    } catch (e) {
+      /* no localStorage available */
+    }
+  }, []);
+  const saveCustomTheme = useCallback(values => {
+    setCustomTheme(values);
+    try {
+      if (values) localStorage.setItem("landfall-custom-theme", JSON.stringify(values));else localStorage.removeItem("landfall-custom-theme");
+    } catch (e) {
+      /* no localStorage available */
+    }
+  }, []);
+  const toggleDevMode = useCallback(val => {
+    setDevMode(val);
+    try {
+      localStorage.setItem("landfall-dev-mode", String(!!val));
+    } catch (e) {
+      /* no localStorage available */
+    }
+  }, []);
   const [nameDraft, setNameDraft] = useState("");
   const [joinCodeDraft, setJoinCodeDraft] = useState("");
   const [maxPlayersDraft, setMaxPlayersDraft] = useState(4);
@@ -2035,7 +2537,8 @@ function Landfall() {
   }, [code]);
   if (!clientId) {
     return /*#__PURE__*/React.createElement(Shell, {
-      theme: theme
+      theme: theme,
+      customTheme: customTheme
     }, /*#__PURE__*/React.createElement("div", {
       style: {
         padding: 40,
@@ -2074,6 +2577,7 @@ function Landfall() {
       setIconDraft: setIconDraft,
       theme: theme,
       setTheme: setTheme,
+      customTheme: customTheme,
       randomSizeDraft: randomSizeDraft,
       setRandomSizeDraft: setRandomSizeDraft,
       randomStyleDraft: randomStyleDraft,
@@ -2144,7 +2648,8 @@ function Landfall() {
   }
   if (!state) {
     return /*#__PURE__*/React.createElement(Shell, {
-      theme: theme
+      theme: theme,
+      customTheme: customTheme
     }, /*#__PURE__*/React.createElement("div", {
       style: {
         padding: 40,
@@ -2164,7 +2669,8 @@ function Landfall() {
     }, "Back")));
   }
   return /*#__PURE__*/React.createElement(Shell, {
-    theme: theme
+    theme: theme,
+    customTheme: customTheme
   }, /*#__PURE__*/React.createElement(GameView, {
     state: state,
     mutate: mutate,
@@ -2179,14 +2685,23 @@ function Landfall() {
     onGoToCode: setCode,
     error: error,
     theme: theme,
-    setTheme: setTheme
+    setTheme: setTheme,
+    customTheme: customTheme,
+    saveCustomTheme: saveCustomTheme,
+    devMode: devMode,
+    toggleDevMode: toggleDevMode
   }));
 }
 function Shell({
   children,
-  theme
+  theme,
+  customTheme
 }) {
-  const t = THEMES[theme] || THEMES.sheercon;
+  const base = THEMES[theme] || THEMES.sheercon;
+  const t = customTheme ? {
+    ...base,
+    ...customTheme
+  } : base;
   const cssVars = {
     "--cream": t.cream,
     "--ink": t.ink,
@@ -2627,6 +3142,7 @@ function Home({
   setIconDraft,
   theme,
   setTheme,
+  customTheme,
   randomSizeDraft,
   setRandomSizeDraft,
   randomStyleDraft,
@@ -2638,7 +3154,8 @@ function Home({
   onResume
 }) {
   return /*#__PURE__*/React.createElement(Shell, {
-    theme: theme
+    theme: theme,
+    customTheme: customTheme
   }, /*#__PURE__*/React.createElement("div", {
     style: {
       flex: 1,
@@ -3097,7 +3614,11 @@ function GameView({
   onGoToCode,
   error,
   theme,
-  setTheme
+  setTheme,
+  customTheme,
+  saveCustomTheme,
+  devMode,
+  toggleDevMode
 }) {
   const me = state.players.find(p => p.id === clientId);
   const isPlayer = !!me;
@@ -3129,7 +3650,11 @@ function GameView({
     onGoToCode: onGoToCode,
     error: error,
     theme: theme,
-    setTheme: setTheme
+    setTheme: setTheme,
+    customTheme: customTheme,
+    saveCustomTheme: saveCustomTheme,
+    devMode: devMode,
+    toggleDevMode: toggleDevMode
   });
 }
 function ChatPanel({
@@ -3439,7 +3964,11 @@ function Board({
   onGoToCode,
   error,
   theme,
-  setTheme
+  setTheme,
+  customTheme,
+  saveCustomTheme,
+  devMode,
+  toggleDevMode
 }) {
   const [zoom, setZoom] = useState(1);
   const [selectedTrade, setSelectedTrade] = useState(false);
@@ -3447,6 +3976,20 @@ function Board({
   const [selectedChat, setSelectedChat] = useState(false);
   const [selectedGuide, setSelectedGuide] = useState(false);
   const [buildMode, setBuildMode] = useState(null); // 'road' | 'ship' | 'settlement' | 'city' | 'moveShip'
+  const lastChatSeqRef = useRef(0);
+  useEffect(() => {
+    const chat = state.chat || [];
+    if (chat.length === 0) return;
+    const latest = chat[chat.length - 1];
+    if (lastChatSeqRef.current === 0) {
+      lastChatSeqRef.current = latest.id;
+      return;
+    }
+    if (latest.id > lastChatSeqRef.current) {
+      lastChatSeqRef.current = latest.id;
+      if (latest.playerId !== clientId) sfx.chatBlip();
+    }
+  }, [state.chat, clientId]);
   const [movingShipFrom, setMovingShipFrom] = useState(null);
   const [pendingYearOfPlenty, setPendingYearOfPlenty] = useState(false);
   const [pendingMonopoly, setPendingMonopoly] = useState(false);
@@ -3727,7 +4270,11 @@ function Board({
     setSelectedChat: setSelectedChat,
     setSelectedGuide: setSelectedGuide,
     theme: theme,
-    setTheme: setTheme
+    setTheme: setTheme,
+    customTheme: customTheme,
+    saveCustomTheme: saveCustomTheme,
+    devMode: devMode,
+    toggleDevMode: toggleDevMode
   })), /*#__PURE__*/React.createElement("div", {
     className: "lf-area-board",
     style: {
@@ -4884,13 +5431,37 @@ function TopBar({
   setSelectedChat,
   setSelectedGuide,
   theme,
-  setTheme
+  setTheme,
+  customTheme,
+  saveCustomTheme,
+  devMode,
+  toggleDevMode
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameDraft, setRenameDraft] = useState(me?.name || "");
   const [volume, setVolumeState] = useState(() => Math.round(sfx.getVolume() * 100));
   const [muted, setMutedState] = useState(() => sfx.getMuted());
+  const [musicState, setMusicState] = useState(() => music.getState());
+  const [devPanelOpen, setDevPanelOpen] = useState(false);
+  const logoClickRef = useRef({
+    count: 0,
+    lastAt: 0
+  });
+  useEffect(() => music.subscribe(setMusicState), []);
+  function handleLogoClick() {
+    const now = Date.now();
+    const rec = logoClickRef.current;
+    if (now - rec.lastAt > 3000) rec.count = 0;
+    rec.count += 1;
+    rec.lastAt = now;
+    if (rec.count >= 5) {
+      rec.count = 0;
+      const next = !devMode;
+      toggleDevMode(next);
+      sfx.achievement();
+    }
+  }
   function handleVolumeChange(e) {
     const v = Number(e.target.value);
     setVolumeState(v);
@@ -4904,6 +5475,17 @@ function TopBar({
     const next = !muted;
     setMutedState(next);
     sfx.setMuted(next);
+  }
+  function handleMusicVolume(e) {
+    const v = Number(e.target.value);
+    music.setVolume(v / 100);
+    if (v > 0 && musicState.muted) music.setMuted(false);
+  }
+  function handleMusicMute() {
+    music.setMuted(!musicState.muted);
+  }
+  function handleMusicToggle() {
+    if (musicState.playing) music.pause();else music.play();
   }
   const timerSec = state.options?.turnTimerSec || 0;
   let timerLabel = null;
@@ -4940,12 +5522,16 @@ function TopBar({
       flexShrink: 0
     }
   }, /*#__PURE__*/React.createElement("span", {
+    onClick: handleLogoClick,
     style: {
       fontWeight: 800,
       color: "var(--gold)",
-      letterSpacing: 1
-    }
-  }, "SHEER CON"), /*#__PURE__*/React.createElement("span", {
+      letterSpacing: 1,
+      cursor: "pointer",
+      userSelect: "none"
+    },
+    title: devMode ? "Dev mode active" : ""
+  }, "SHEER CON", devMode ? " ⚡" : ""), /*#__PURE__*/React.createElement("span", {
     style: {
       fontSize: 12,
       color: "#a89a7e"
@@ -5064,6 +5650,77 @@ function TopBar({
       width: "100%",
       accentColor: "var(--gold)"
     }
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: "2px 2px 6px",
+      borderBottom: "1px solid rgba(255,255,255,0.12)",
+      marginBottom: 2
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 4
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      color: "#a89a7e",
+      textTransform: "uppercase",
+      letterSpacing: 0.5
+    }
+  }, "Music (soma.fm)"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 4
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: handleMusicToggle,
+    title: musicState.playing ? "Pause" : "Play",
+    style: {
+      background: "none",
+      border: "none",
+      fontSize: 14,
+      padding: 0,
+      cursor: "pointer"
+    }
+  }, musicState.playing ? "⏸" : "▶"), /*#__PURE__*/React.createElement("button", {
+    onClick: handleMusicMute,
+    title: musicState.muted ? "Unmute" : "Mute",
+    style: {
+      background: "none",
+      border: "none",
+      fontSize: 14,
+      padding: 0,
+      cursor: "pointer"
+    }
+  }, musicState.muted || musicState.volume === 0 ? "🔇" : musicState.volume < 0.5 ? "🔉" : "🔊"))), /*#__PURE__*/React.createElement("select", {
+    value: musicState.station,
+    onChange: e => music.setStation(e.target.value),
+    style: {
+      width: "100%",
+      padding: "3px 4px",
+      borderRadius: 5,
+      fontSize: 11,
+      background: "rgba(0,0,0,0.35)",
+      color: "#f7edd3",
+      border: "1px solid rgba(255,255,255,0.2)",
+      marginBottom: 4
+    }
+  }, Object.entries(MUSIC_STATIONS).map(([id, s]) => /*#__PURE__*/React.createElement("option", {
+    key: id,
+    value: id
+  }, s.name, " — ", s.desc))), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "100",
+    value: musicState.muted ? 0 : Math.round(musicState.volume * 100),
+    onChange: handleMusicVolume,
+    style: {
+      width: "100%",
+      accentColor: "var(--gold)"
+    }
   })), setTheme && /*#__PURE__*/React.createElement("div", {
     style: {
       padding: "2px 2px 6px",
@@ -5168,10 +5825,281 @@ function TopBar({
     small: true,
     variant: "ghost",
     onClick: onLeave
-  }, "🚪 Exit game")))), state.phase !== "lobby" && /*#__PURE__*/React.createElement(PlayerPointsBar, {
+  }, "🚪 Exit game"), devMode && /*#__PURE__*/React.createElement(Btn, {
+    small: true,
+    variant: "ghost",
+    onClick: () => {
+      setDevPanelOpen(true);
+      setMenuOpen(false);
+    }
+  }, "⚡ Dev tools")))), state.phase !== "lobby" && /*#__PURE__*/React.createElement(PlayerPointsBar, {
     state: state,
     clientId: clientId
+  }), devPanelOpen && /*#__PURE__*/React.createElement(DevPanel, {
+    theme: theme,
+    setTheme: setTheme,
+    customTheme: customTheme,
+    saveCustomTheme: saveCustomTheme,
+    toggleDevMode: toggleDevMode,
+    onClose: () => setDevPanelOpen(false)
   }));
+}
+function DevPanel({
+  theme,
+  setTheme,
+  customTheme,
+  saveCustomTheme,
+  toggleDevMode,
+  onClose
+}) {
+  const baseTheme = THEMES[theme === "custom" ? "sheercon" : theme] || THEMES.sheercon;
+  const startingValues = customTheme || {
+    ...baseTheme
+  };
+  const [draft, setDraft] = useState(startingValues);
+  const [dirty, setDirty] = useState(false);
+  // Live-apply: whenever draft changes, save it and switch theme to "custom"
+  useEffect(() => {
+    if (!dirty) return;
+    saveCustomTheme(draft);
+    if (theme !== "custom") setTheme("custom");
+  }, [draft, dirty, theme, setTheme, saveCustomTheme]);
+  function updateField(key, value) {
+    setDraft(d => ({
+      ...d,
+      [key]: value
+    }));
+    setDirty(true);
+  }
+  function loadFromTheme(themeKey) {
+    const t = THEMES[themeKey];
+    if (!t) return;
+    setDraft({
+      ...t
+    });
+    setDirty(true);
+  }
+  function reset() {
+    setDraft({
+      ...THEMES.sheercon
+    });
+    setDirty(true);
+    saveCustomTheme(null);
+    setTheme("sheercon");
+  }
+  const fields = [{
+    key: "rust",
+    label: "Primary (rust)",
+    type: "color"
+  }, {
+    key: "rustDark",
+    label: "Primary dark",
+    type: "color"
+  }, {
+    key: "gold",
+    label: "Accent (gold)",
+    type: "color"
+  }, {
+    key: "glow",
+    label: "Glow",
+    type: "color"
+  }, {
+    key: "cream",
+    label: "Text (cream)",
+    type: "color"
+  }, {
+    key: "ink",
+    label: "Ink (deep shade)",
+    type: "color"
+  }, {
+    key: "wood",
+    label: "Wood",
+    type: "color"
+  }, {
+    key: "blue",
+    label: "Blue accent",
+    type: "color"
+  }, {
+    key: "bg1",
+    label: "Background inner",
+    type: "color"
+  }, {
+    key: "bg2",
+    label: "Background outer",
+    type: "color"
+  }, {
+    key: "panel",
+    label: "Panel (rgba)",
+    type: "text"
+  }, {
+    key: "panel2",
+    label: "Panel alt (rgba)",
+    type: "text"
+  }];
+  return /*#__PURE__*/React.createElement("div", {
+    onClick: onClose,
+    style: {
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,0.6)",
+      zIndex: 200,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 20
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    onClick: e => e.stopPropagation(),
+    style: {
+      background: "linear-gradient(160deg, rgba(56,39,22,0.98), rgba(38,26,15,0.99))",
+      border: "2px solid var(--rust)",
+      borderRadius: 14,
+      padding: 18,
+      maxWidth: 480,
+      width: "100%",
+      maxHeight: "88vh",
+      overflowY: "auto",
+      color: "#f7edd3",
+      boxShadow: "0 18px 50px rgba(0,0,0,0.55)"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 10
+    }
+  }, /*#__PURE__*/React.createElement("h3", {
+    style: {
+      margin: 0,
+      color: "var(--gold)"
+    }
+  }, "⚡ Dev tools"), /*#__PURE__*/React.createElement("button", {
+    onClick: onClose,
+    style: {
+      background: "none",
+      border: "none",
+      color: "#f7edd3",
+      fontSize: 22,
+      cursor: "pointer",
+      padding: 0
+    }
+  }, "×")), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 12,
+      color: "#a89a7e",
+      margin: "0 0 12px"
+    }
+  }, "Any change becomes your \"Custom\" theme instantly. Reset to start over."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#a89a7e",
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+      marginBottom: 6
+    }
+  }, "Start from"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexWrap: "wrap",
+      gap: 6
+    }
+  }, Object.entries(THEMES).map(([key, t]) => /*#__PURE__*/React.createElement("button", {
+    key: key,
+    onClick: () => loadFromTheme(key),
+    style: {
+      padding: "4px 10px",
+      fontSize: 11,
+      borderRadius: 8,
+      background: "rgba(0,0,0,0.28)",
+      border: "1px solid rgba(255,255,255,0.18)",
+      color: "#f7edd3",
+      cursor: "pointer"
+    }
+  }, t.icon, " ", t.name)))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: 10,
+      marginBottom: 14
+    }
+  }, fields.map(f => /*#__PURE__*/React.createElement("label", {
+    key: f.key,
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 3,
+      fontSize: 11,
+      color: "#d9cba4"
+    }
+  }, /*#__PURE__*/React.createElement("span", null, f.label), f.type === "color" ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 4,
+      alignItems: "center"
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "color",
+    value: draft[f.key] || "#000000",
+    onChange: e => updateField(f.key, e.target.value),
+    style: {
+      width: 34,
+      height: 26,
+      border: "1px solid rgba(255,255,255,0.2)",
+      borderRadius: 4,
+      padding: 0,
+      background: "none",
+      cursor: "pointer"
+    }
+  }), /*#__PURE__*/React.createElement("input", {
+    type: "text",
+    value: draft[f.key] || "",
+    onChange: e => updateField(f.key, e.target.value),
+    style: {
+      flex: 1,
+      minWidth: 0,
+      padding: "4px 6px",
+      fontSize: 11,
+      borderRadius: 4,
+      fontFamily: "monospace"
+    }
+  })) : /*#__PURE__*/React.createElement("input", {
+    type: "text",
+    value: draft[f.key] || "",
+    onChange: e => updateField(f.key, e.target.value),
+    style: {
+      padding: "4px 6px",
+      fontSize: 11,
+      borderRadius: 4,
+      fontFamily: "monospace"
+    }
+  })))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      flexWrap: "wrap"
+    }
+  }, /*#__PURE__*/React.createElement(Btn, {
+    small: true,
+    onClick: reset
+  }, "Reset to Sheer Con"), /*#__PURE__*/React.createElement(Btn, {
+    small: true,
+    variant: "ghost",
+    onClick: () => {
+      toggleDevMode(false);
+      onClose();
+    }
+  }, "Disable dev mode")), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 10,
+      color: "#7d7156",
+      margin: "12px 0 0"
+    }
+  }, "Tip: click SHEER CON 5 times to toggle dev mode again later.")));
 }
 function PlayerPointsBar({
   state,
@@ -6249,9 +7177,17 @@ function DevCardModal({
         p.playedKnights += 1;
         s.robberMoveRequired = clientId;
         recalcLargestArmy(s);
-        addLog(s, `${p.name} played a Knight.`);
+        addLog(s, `${p.name} played a Knight.`, {
+          forAll: true,
+          sound: "devCard",
+          silent: true
+        });
       } else if (card.type === "road_building") {
-        addLog(s, `${p.name} played Road Building — place 2 free roads.`);
+        addLog(s, `${p.name} played Road Building — place 2 free roads.`, {
+          forAll: true,
+          sound: "devCard",
+          silent: true
+        });
       } else if (card.type === "year_of_plenty") {
         (extra || []).forEach(r => {
           if (s.bank[r] > 0) {
@@ -6259,7 +7195,11 @@ function DevCardModal({
             p.resources[r] += 1;
           }
         });
-        addLog(s, `${p.name} played Year of Plenty.`);
+        addLog(s, `${p.name} played Year of Plenty.`, {
+          forAll: true,
+          sound: "devCard",
+          silent: true
+        });
       } else if (card.type === "monopoly") {
         let total = 0;
         s.players.forEach(op => {
@@ -6268,7 +7208,11 @@ function DevCardModal({
           p.resources[extra] += op.resources[extra];
           op.resources[extra] = 0;
         });
-        addLog(s, `${p.name} played Monopoly on ${RES_LABEL[extra]} and collected ${total}.`);
+        addLog(s, `${p.name} played Monopoly on ${RES_LABEL[extra]} and collected ${total}.`, {
+          forAll: true,
+          sound: "devCard",
+          silent: true
+        });
       }
       checkWinner(s);
       return s;
@@ -6415,7 +7359,10 @@ function setupPlaceRoad(s, playerId, eid) {
       s.currentIndex = s.turnOrder.indexOf(s.turnOrder[0]);
       s.turnPhase = "roll";
       s.turnStartedAt = Date.now();
-      addLog(s, "Setup complete. The game begins!");
+      addLog(s, "Setup complete. The game begins!", {
+        forAll: true,
+        sound: "fanfare"
+      });
     }
   } else {
     const nextPlayer = order[posInOrder + 1];
@@ -6444,10 +7391,20 @@ function rollDice(s, playerId) {
     });
     if (Object.keys(s.pendingDiscards).length === 0) {
       s.robberMoveRequired = playerId;
+    } else {
+      // Anyone who has to discard hears the sad thud
+      Object.keys(s.pendingDiscards).forEach(pid => {
+        addLog(s, `${playerName(s, pid)} must discard.`, {
+          forPlayers: [pid],
+          sound: "sadThud",
+          silent: true
+        });
+      });
     }
     s.turnPhase = "main";
     return s;
   }
+  let anyResourcesDealt = false;
   s.board.hexes.forEach(h => {
     if (h.number !== total || h.id === s.board.robberHexId || h.resource === "sea") return;
     const gains = {};
@@ -6468,6 +7425,7 @@ function rollDice(s, playerId) {
           s.bank[pick] -= 1;
           pl.resources[pick] += 1;
           recordGain(s, pid, pick, h.id);
+          anyResourcesDealt = true;
         }
       });
       return;
@@ -6479,9 +7437,17 @@ function rollDice(s, playerId) {
         pl.resources[h.resource] += amt;
         s.bank[h.resource] -= amt;
         for (let i = 0; i < amt; i++) recordGain(s, pid, h.resource, h.id);
+        anyResourcesDealt = true;
       });
     }
   });
+  if (anyResourcesDealt) {
+    addLog(s, `Resources dealt for ${total}.`, {
+      forAll: true,
+      sound: "deal",
+      silent: true
+    });
+  }
   s.turnPhase = "main";
   return s;
 }
@@ -6502,7 +7468,10 @@ function moveRobber(s, playerId, hexId) {
     const b = s.board.buildings[vid];
     if (b && b.owner !== playerId) targets.add(b.owner);
   });
-  addLog(s, `${playerName(s, playerId)} moved the ${isPirate ? "pirate ship" : "marauder"}.`);
+  addLog(s, `${playerName(s, playerId)} moved the ${isPirate ? "pirate ship" : "marauder"}.`, {
+    forAll: true,
+    sound: "evilLaugh"
+  });
   if (targets.size > 0 && !s.options?.friendlyRobber) {
     s.robberStealChoices = Array.from(targets);
   } else {
@@ -6666,7 +7635,7 @@ function acceptTradeOffer(s, offerId, accepterId) {
   addLog(s, sameCard ? `${to.name} accepted ${from.name}'s "trade" — the exact same card back. Nice one.` : `${to.name} accepted a trade with ${from.name}.`, {
     forPlayers: [offer.from, accepterId],
     kind: "accept",
-    sound: "accept"
+    sound: sameCard ? "jokeTrade" : "accept"
   });
   s.tradeOffers = offers.filter(o => o.id !== offerId);
   return s;
@@ -6723,7 +7692,7 @@ function recalcLongestRoad(s) {
     addLog(s, `${playerName(s, bestPlayer)} claims Longest Road (${bestLen})!`, {
       forAll: true,
       kind: "achievement",
-      sound: "achievement"
+      sound: "carPass"
     });
   }
   s.longestRoad = {
@@ -6744,7 +7713,7 @@ function recalcLargestArmy(s) {
     addLog(s, `${playerName(s, bestPlayer)} claims Largest Army (${bestCount})!`, {
       forAll: true,
       kind: "achievement",
-      sound: "achievement"
+      sound: "chant"
     });
   }
   s.largestArmy = {
@@ -7058,7 +8027,11 @@ function botDoFullTurn(s, botId) {
       player.devPlayedThisTurn = true;
       player.playedKnights += 1;
       recalcLargestArmy(s);
-      addLog(s, `${player.name} played a Knight.`);
+      addLog(s, `${player.name} played a Knight.`, {
+        forAll: true,
+        sound: "devCard",
+        silent: true
+      });
       botResolveRobber(s, botId);
       player.actionsThisTurn += 1;
       return s;
