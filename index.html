@@ -208,13 +208,31 @@ function payCost(res, cost) {
 function createSFX() {
   let ctx = null;
   let master = null;
+  let userVolume = 0.7;
+  let muted = false;
+  try {
+    const storedVol = localStorage.getItem("landfall-sound-volume");
+    if (storedVol !== null) {
+      const parsed = parseFloat(storedVol);
+      if (!isNaN(parsed)) userVolume = Math.max(0, Math.min(1, parsed));
+    }
+    muted = localStorage.getItem("landfall-sound-muted") === "true";
+  } catch (e) {
+    /* no localStorage available */
+  }
+  function applyGain() {
+    if (master) master.gain.value = muted ? 0 : userVolume;
+  }
   function ensure() {
-    if (ctx) return;
+    if (ctx) {
+      if (ctx.state === "suspended") ctx.resume().catch(() => {});
+      return;
+    }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     ctx = new AC();
     master = ctx.createGain();
-    master.gain.value = 0.4;
+    master.gain.value = muted ? 0 : userVolume;
     master.connect(ctx.destination);
   }
   function tone({
@@ -225,6 +243,7 @@ function createSFX() {
     vol = 0.2,
     delay = 0
   }) {
+    ensure();
     if (!ctx || !master) return;
     const t0 = ctx.currentTime + delay;
     const osc = ctx.createOscillator();
@@ -247,6 +266,7 @@ function createSFX() {
     freqEnd,
     type = "lowpass"
   }) {
+    ensure();
     if (!ctx || !master) return;
     const t0 = ctx.currentTime;
     const len = Math.max(1, Math.floor(ctx.sampleRate * dur));
@@ -271,12 +291,35 @@ function createSFX() {
   return {
     unlock() {
       ensure();
-      if (ctx && ctx.state === "suspended") ctx.resume().catch(() => {});
+    },
+    setVolume(v) {
+      userVolume = Math.max(0, Math.min(1, v));
+      try {
+        localStorage.setItem("landfall-sound-volume", String(userVolume));
+      } catch (e) {
+        /* no localStorage available */
+      }
+      applyGain();
+    },
+    setMuted(m) {
+      muted = !!m;
+      try {
+        localStorage.setItem("landfall-sound-muted", String(muted));
+      } catch (e) {
+        /* no localStorage available */
+      }
+      applyGain();
+    },
+    getVolume() {
+      return userVolume;
+    },
+    getMuted() {
+      return muted;
     },
     dice() {
       for (let i = 0; i < 5; i++) noise({
         dur: 0.04,
-        vol: 0.1,
+        vol: 0.16,
         freq: 2200 + Math.random() * 1200,
         freqEnd: 500,
         type: "highpass"
@@ -286,7 +329,7 @@ function createSFX() {
         freq: 120,
         freqEnd: 70,
         dur: 0.12,
-        vol: 0.16,
+        vol: 0.24,
         delay: 0.22
       });
     },
@@ -296,11 +339,11 @@ function createSFX() {
         freq: 160,
         freqEnd: 90,
         dur: 0.14,
-        vol: 0.22
+        vol: 0.3
       });
       noise({
         dur: 0.05,
-        vol: 0.08,
+        vol: 0.13,
         freq: 1800,
         freqEnd: 400,
         type: "highpass"
@@ -311,13 +354,13 @@ function createSFX() {
         type: "sine",
         freq: 660,
         dur: 0.09,
-        vol: 0.18
+        vol: 0.26
       });
       tone({
         type: "sine",
         freq: 880,
         dur: 0.13,
-        vol: 0.18,
+        vol: 0.26,
         delay: 0.08
       });
     },
@@ -326,13 +369,13 @@ function createSFX() {
         type: "square",
         freq: 220,
         dur: 0.1,
-        vol: 0.12
+        vol: 0.18
       });
       tone({
         type: "square",
         freq: 160,
         dur: 0.14,
-        vol: 0.12,
+        vol: 0.18,
         delay: 0.09
       });
     },
@@ -341,7 +384,7 @@ function createSFX() {
         type: "triangle",
         freq: 740,
         dur: 0.08,
-        vol: 0.13
+        vol: 0.2
       });
     },
     turn() {
@@ -349,13 +392,13 @@ function createSFX() {
         type: "sine",
         freq: 523,
         dur: 0.1,
-        vol: 0.15
+        vol: 0.22
       });
       tone({
         type: "sine",
         freq: 659,
         dur: 0.14,
-        vol: 0.15,
+        vol: 0.22,
         delay: 0.09
       });
     },
@@ -365,11 +408,11 @@ function createSFX() {
         freq: 200,
         freqEnd: 70,
         dur: 0.24,
-        vol: 0.15
+        vol: 0.22
       });
       noise({
         dur: 0.15,
-        vol: 0.08,
+        vol: 0.13,
         freq: 500,
         freqEnd: 150,
         type: "lowpass"
@@ -380,7 +423,7 @@ function createSFX() {
         type: "triangle",
         freq: f,
         dur: 0.15,
-        vol: 0.17,
+        vol: 0.24,
         delay: i * 0.1
       }));
     },
@@ -389,13 +432,21 @@ function createSFX() {
         type: "triangle",
         freq: f,
         dur: 0.2,
-        vol: 0.18,
+        vol: 0.25,
         delay: i * 0.12
       }));
     }
   };
 }
 const sfx = createSFX();
+if (typeof document !== "undefined") {
+  ["pointerdown", "keydown", "touchstart"].forEach(evt => document.addEventListener(evt, () => sfx.unlock(), {
+    passive: true
+  }));
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") sfx.unlock();
+  });
+}
 
 /* ============================== GEOMETRY ================================ */
 
@@ -1677,13 +1728,14 @@ function useClientId() {
 /* ============================== GAME CREATION ============================ */
 
 const BOT_NAMES = ["Ranger Bex", "Trader Jo", "Wildcard Wren", "Captain Ridge", "Old Man Hollow", "Prospector Finch"];
-function makePlayer(id, name, color, isBot, icon) {
+function makePlayer(id, name, color, isBot, icon, botStyle) {
   return {
     id,
     name,
     color,
     icon: icon || "🐯",
     isBot: !!isBot,
+    botStyle: botStyle || "balanced",
     resources: emptyResources(),
     devCards: [],
     playedKnights: 0,
@@ -1835,6 +1887,7 @@ function Landfall() {
   const [randomSizeDraft, setRandomSizeDraft] = useState("medium");
   const [randomStyleDraft, setRandomStyleDraft] = useState("blob");
   const [aiCountDraft, setAiCountDraft] = useState(2);
+  const [botStyleDraft, setBotStyleDraft] = useState("balanced");
   const [optionsDraft, setOptionsDraft] = useState({
     ...DEFAULT_OPTIONS
   });
@@ -1890,6 +1943,8 @@ function Landfall() {
       setMapDraft: setMapDraft,
       aiCountDraft: aiCountDraft,
       setAiCountDraft: setAiCountDraft,
+      botStyleDraft: botStyleDraft,
+      setBotStyleDraft: setBotStyleDraft,
       optionsDraft: optionsDraft,
       setOptionsDraft: setOptionsDraft,
       colorDraft: colorDraft,
@@ -1920,7 +1975,7 @@ function Landfall() {
         const remainingColors = PLAYER_COLORS.filter(c => c !== colorDraft);
         const remainingIcons = PLAYER_ICONS.filter(c => c !== iconDraft);
         for (let i = 0; i < aiCountDraft; i++) {
-          newState.players.push(makePlayer("bot_" + uid(8), botNames[i % botNames.length], remainingColors[i % remainingColors.length], true, remainingIcons[i % remainingIcons.length]));
+          newState.players.push(makePlayer("bot_" + uid(8), botNames[i % botNames.length], remainingColors[i % remainingColors.length], true, remainingIcons[i % remainingIcons.length], botStyleDraft));
         }
         newState.turnOrder = shuffle(newState.players.map(p => p.id));
         newState.phase = "setup";
@@ -2412,6 +2467,8 @@ function Home({
   setMapDraft,
   aiCountDraft,
   setAiCountDraft,
+  botStyleDraft,
+  setBotStyleDraft,
   optionsDraft,
   setOptionsDraft,
   colorDraft,
@@ -2581,7 +2638,49 @@ function Home({
     key: n,
     onClick: () => setAiCountDraft(n),
     style: pillStyle(aiCountDraft === n)
-  }, n)))), /*#__PURE__*/React.createElement(OptionsPicker, {
+  }, n)))), /*#__PURE__*/React.createElement(Field, {
+    label: "AI play style"
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      flexWrap: "wrap"
+    }
+  }, [{
+    value: "easy",
+    label: "Easy",
+    hint: "trades freely"
+  }, {
+    value: "balanced",
+    label: "Balanced",
+    hint: ""
+  }, {
+    value: "aggressive",
+    label: "Aggressive",
+    hint: "robs & holds firm"
+  }, {
+    value: "random",
+    label: "Random",
+    hint: ""
+  }].map(opt => /*#__PURE__*/React.createElement("button", {
+    key: opt.value,
+    onClick: () => setBotStyleDraft(opt.value),
+    style: {
+      ...pillStyle(botStyleDraft === opt.value),
+      flex: "1 1 auto"
+    }
+  }, opt.label))), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 11,
+      color: "#a89a7e",
+      margin: "4px 0 0"
+    }
+  }, {
+    easy: "Bots propose trades often and accept generous offers.",
+    balanced: "A reasonable mix of building, trading, and defense.",
+    aggressive: "Bots trade rarely, target you with the robber, and hold out for fair deals.",
+    random: "Bots make wildly unpredictable choices."
+  }[botStyleDraft])), /*#__PURE__*/React.createElement(OptionsPicker, {
     optionsDraft: optionsDraft,
     setOptionsDraft: setOptionsDraft
   }), /*#__PURE__*/React.createElement(Btn, {
@@ -3329,7 +3428,7 @@ function Board({
   useEffect(() => {
     const action = findBotAction(state);
     if (!action) return;
-    const delay = 900 + Math.random() * 1600;
+    const delay = 1300 + Math.random() * 2000;
     const timer = setTimeout(() => {
       mutate(s => applyBotAction(s, action));
     }, delay);
@@ -3375,7 +3474,9 @@ function Board({
     isMyTurn: isMyTurn,
     needsDiscard: needsDiscard,
     needsRobberMove: needsRobberMove,
-    pendingRoadBuilding: pendingRoadBuilding
+    pendingRoadBuilding: pendingRoadBuilding,
+    setSelectedChat: setSelectedChat,
+    setSelectedGuide: setSelectedGuide
   })), /*#__PURE__*/React.createElement("div", {
     className: "lf-area-board",
     style: {
@@ -3788,8 +3889,6 @@ function Board({
     mutate: mutate,
     setSelectedTrade: setSelectedTrade,
     setSelectedDev: setSelectedDev,
-    setSelectedChat: setSelectedChat,
-    setSelectedGuide: setSelectedGuide,
     pendingRoadBuilding: pendingRoadBuilding,
     nowTick: nowTick
   })), needsDiscard && /*#__PURE__*/React.createElement(DiscardModal, {
@@ -4336,6 +4435,9 @@ function playerName(state, id) {
 
 /* ============================== TOASTS ==================================== */
 
+function isNarrowScreen() {
+  return typeof window !== "undefined" && window.matchMedia && window.matchMedia("(max-width: 860px)").matches;
+}
 function useToasts(state, clientId) {
   const [toasts, setToasts] = useState([]);
   const lastSeenSeqRef = useRef(null);
@@ -4351,7 +4453,8 @@ function useToasts(state, clientId) {
       const relevant = t.forAll || t.forPlayers && t.forPlayers.includes(clientId);
       if (!relevant) return;
       if (t.sound && sfx[t.sound]) sfx[t.sound]();
-      if (!t.silent) {
+      const skipOnMobile = t.desktopOnly && isNarrowScreen();
+      if (!t.silent && !skipOnMobile) {
         const id = uid(6);
         setToasts(ts => [...ts, {
           id,
@@ -4526,22 +4629,52 @@ function TopBar({
   isMyTurn,
   needsDiscard,
   needsRobberMove,
-  pendingRoadBuilding
+  pendingRoadBuilding,
+  setSelectedChat,
+  setSelectedGuide
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameDraft, setRenameDraft] = useState(me?.name || "");
+  const [volume, setVolumeState] = useState(() => Math.round(sfx.getVolume() * 100));
+  const [muted, setMutedState] = useState(() => sfx.getMuted());
+  function handleVolumeChange(e) {
+    const v = Number(e.target.value);
+    setVolumeState(v);
+    sfx.setVolume(v / 100);
+    if (v > 0 && muted) {
+      setMutedState(false);
+      sfx.setMuted(false);
+    }
+  }
+  function handleToggleMute() {
+    const next = !muted;
+    setMutedState(next);
+    sfx.setMuted(next);
+  }
   const timerSec = state.options?.turnTimerSec || 0;
   let timerLabel = null;
   if (timerSec && state.phase === "playing" && !state.winner) {
     const remaining = Math.max(0, timerSec - Math.floor(((nowTick || Date.now()) - (state.turnStartedAt || nowTick)) / 1000));
     timerLabel = `${remaining}s`;
   }
+  function submitRename() {
+    const clean = renameDraft.trim().slice(0, 20);
+    if (clean && clean !== me?.name) mutate(s => renamePlayer(s, clientId, clean));
+    setRenaming(false);
+    setMenuOpen(false);
+  }
   return /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "var(--panel)",
+      borderBottom: "1px solid rgba(255,255,255,0.12)"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       alignItems: "center",
       justifyContent: "space-between",
       padding: "8px 12px",
-      background: "var(--panel)",
-      borderBottom: "1px solid rgba(255,255,255,0.12)",
       gap: 8,
       minWidth: 0
     }
@@ -4613,11 +4746,180 @@ function TopBar({
       color: "var(--gold)",
       flexShrink: 0
     }
-  }, "⏱", timerLabel)), /*#__PURE__*/React.createElement(Btn, {
+  }, "⏱", timerLabel)), /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "relative",
+      flexShrink: 0
+    }
+  }, /*#__PURE__*/React.createElement(Btn, {
+    small: true,
+    variant: "ghost",
+    onClick: () => setMenuOpen(v => !v)
+  }, "☰"), menuOpen && /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "absolute",
+      top: "110%",
+      right: 0,
+      zIndex: 60,
+      background: "linear-gradient(160deg, rgba(56,39,22,0.98), rgba(38,26,15,0.99))",
+      border: "2px solid var(--rust)",
+      borderRadius: 12,
+      boxShadow: "0 12px 32px rgba(0,0,0,0.5)",
+      padding: 10,
+      minWidth: 190,
+      display: "flex",
+      flexDirection: "column",
+      gap: 6
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: "2px 2px 6px",
+      borderBottom: "1px solid rgba(255,255,255,0.12)",
+      marginBottom: 2
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      marginBottom: 4
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      color: "#a89a7e",
+      textTransform: "uppercase",
+      letterSpacing: 0.5
+    }
+  }, "Sound"), /*#__PURE__*/React.createElement("button", {
+    onClick: handleToggleMute,
+    title: muted ? "Unmute" : "Mute",
+    style: {
+      background: "none",
+      border: "none",
+      fontSize: 16,
+      padding: 0,
+      cursor: "pointer"
+    }
+  }, muted || volume === 0 ? "🔇" : volume < 50 ? "🔉" : "🔊")), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "100",
+    value: muted ? 0 : volume,
+    onChange: handleVolumeChange,
+    style: {
+      width: "100%",
+      accentColor: "var(--gold)"
+    }
+  })), renaming ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 4
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    autoFocus: true,
+    value: renameDraft,
+    onChange: e => setRenameDraft(e.target.value),
+    onKeyDown: e => {
+      if (e.key === "Enter") submitRename();
+      if (e.key === "Escape") setRenaming(false);
+    },
+    maxLength: 20,
+    style: {
+      flex: 1,
+      minWidth: 0,
+      padding: "6px 8px",
+      fontSize: 13,
+      borderRadius: 6
+    }
+  }), /*#__PURE__*/React.createElement(Btn, {
+    small: true,
+    onClick: submitRename
+  }, "✓")) : /*#__PURE__*/React.createElement(Btn, {
+    small: true,
+    variant: "ghost",
+    onClick: () => {
+      setRenameDraft(me?.name || "");
+      setRenaming(true);
+    }
+  }, "✏️ Change name"), /*#__PURE__*/React.createElement(Btn, {
+    small: true,
+    variant: "ghost",
+    onClick: () => {
+      setSelectedChat(true);
+      setMenuOpen(false);
+    }
+  }, "💬 Chat"), /*#__PURE__*/React.createElement(Btn, {
+    small: true,
+    variant: "ghost",
+    onClick: () => {
+      setSelectedGuide(true);
+      setMenuOpen(false);
+    }
+  }, "📖 Build guide"), /*#__PURE__*/React.createElement(Btn, {
     small: true,
     variant: "ghost",
     onClick: onLeave
-  }, "Exit"));
+  }, "🚪 Exit game")))), state.phase !== "lobby" && /*#__PURE__*/React.createElement(PlayerPointsBar, {
+    state: state,
+    clientId: clientId
+  }));
+}
+function PlayerPointsBar({
+  state,
+  clientId
+}) {
+  const currentId = state.turnOrder ? state.turnOrder[state.currentIndex] : null;
+  return /*#__PURE__*/React.createElement("div", {
+    className: "lf-points-bar",
+    style: {
+      display: "flex",
+      gap: 6,
+      padding: "6px 10px",
+      overflowX: "auto",
+      borderTop: "1px solid rgba(255,255,255,0.08)",
+      background: "rgba(0,0,0,0.18)"
+    }
+  }, state.players.map(p => /*#__PURE__*/React.createElement("div", {
+    key: p.id,
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 5,
+      padding: "3px 8px",
+      borderRadius: 20,
+      flexShrink: 0,
+      background: p.id === currentId ? "rgba(232,182,76,0.22)" : "rgba(255,255,255,0.06)",
+      border: p.id === currentId ? "1.5px solid var(--gold)" : "1px solid rgba(255,255,255,0.12)"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      width: 16,
+      height: 16,
+      borderRadius: "50%",
+      background: p.color,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontSize: 10
+    }
+  }, p.icon), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 11,
+      fontWeight: p.id === clientId ? 800 : 500,
+      color: "#f7edd3",
+      maxWidth: 70,
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap"
+    }
+  }, p.name), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 12,
+      fontWeight: 800,
+      color: "var(--gold)"
+    }
+  }, "★", computeVictoryPoints(state, p)))));
 }
 function SidePanel({
   state,
@@ -4631,8 +4933,6 @@ function SidePanel({
   mutate,
   setSelectedTrade,
   setSelectedDev,
-  setSelectedChat,
-  setSelectedGuide,
   pendingRoadBuilding,
   nowTick
 }) {
@@ -4763,23 +5063,7 @@ function SidePanel({
     variant: "ghost",
     disabled: !isMyTurn,
     onClick: () => setSelectedDev(true)
-  }, "Dev cards (", me.devCards.length, ")"))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h4", {
-    style: hTitle
-  }, "More"), /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      flexDirection: "column",
-      gap: 6
-    }
-  }, /*#__PURE__*/React.createElement(Btn, {
-    small: true,
-    variant: "ghost",
-    onClick: () => setSelectedChat(true)
-  }, "💬 Chat"), /*#__PURE__*/React.createElement(Btn, {
-    small: true,
-    variant: "ghost",
-    onClick: () => setSelectedGuide(true)
-  }, "📖 Build guide"))), state.phase === "playing" && /*#__PURE__*/React.createElement("div", {
+  }, "Dev cards (", me.devCards.length, ")"))), state.phase === "playing" && /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 12,
       color: "#d9cba4"
@@ -5257,7 +5541,31 @@ function GameOverScreen({
         marginTop: 2
       }
     }, n));
-  })), /*#__PURE__*/React.createElement("div", {
+  })), /*#__PURE__*/React.createElement("h4", {
+    style: {
+      color: "var(--gold)",
+      marginTop: 16,
+      marginBottom: 6
+    }
+  }, "Full game log"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      maxHeight: 160,
+      overflowY: "auto",
+      background: "rgba(0,0,0,0.28)",
+      border: "1px solid rgba(255,255,255,0.1)",
+      borderRadius: 8,
+      padding: 8,
+      display: "flex",
+      flexDirection: "column",
+      gap: 2
+    }
+  }, (state.log || []).map((entry, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    style: {
+      fontSize: 11,
+      color: "#d9cba4"
+    }
+  }, entry.msg))), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 8,
@@ -5927,7 +6235,7 @@ function buildRoad(s, playerId, eid) {
   addLog(s, `${p.name} built a road.`, {
     forAll: true,
     sound: "build",
-    silent: true
+    desktopOnly: true
   });
   recalcLongestRoad(s);
   checkWinner(s);
@@ -5947,7 +6255,7 @@ function buildShip(s, playerId, eid) {
   addLog(s, `${p.name} built a ship.`, {
     forAll: true,
     sound: "build",
-    silent: true
+    desktopOnly: true
   });
   recalcLongestRoad(s);
   checkWinner(s);
@@ -5970,7 +6278,7 @@ function moveShip(s, playerId, fromEdgeId, toEdgeId) {
   addLog(s, `${playerName(s, playerId)} moved a ship.`, {
     forAll: true,
     sound: "build",
-    silent: true
+    desktopOnly: true
   });
   recalcLongestRoad(s);
   checkWinner(s);
@@ -5990,7 +6298,7 @@ function buildSettlement(s, playerId, vid) {
   addLog(s, `${p.name} built a settlement.`, {
     forAll: true,
     sound: "build",
-    silent: true
+    desktopOnly: true
   });
   recalcLongestRoad(s);
   checkWinner(s);
@@ -6011,7 +6319,7 @@ function buildCity(s, playerId, vid) {
   addLog(s, `${p.name} upgraded to a city.`, {
     forAll: true,
     sound: "build",
-    silent: true
+    desktopOnly: true
   });
   checkWinner(s);
   return s;
@@ -6153,6 +6461,7 @@ function checkWinner(s) {
 function endTurn(s) {
   const p = s.players.find(pl => pl.id === s.turnOrder[s.currentIndex]);
   p.devPlayedThisTurn = false;
+  p.actionsThisTurn = 0;
   s.turnCounter += 1;
   s.diceRoll = null;
   s.tradeOffers = [];
@@ -6213,6 +6522,8 @@ function findBotAction(s) {
 }
 function botSignature(s) {
   if (!s) return "";
+  const curId = s.turnOrder ? s.turnOrder[s.currentIndex] : null;
+  const curPlayer = curId ? s.players.find(p => p.id === curId) : null;
   return JSON.stringify({
     phase: s.phase,
     currentIndex: s.currentIndex,
@@ -6225,7 +6536,11 @@ function botSignature(s) {
     discards: Object.keys(s.pendingDiscards || {}).sort(),
     robberMoveRequired: s.robberMoveRequired,
     robberStealChoices: s.robberStealChoices,
-    offers: (s.tradeOffers || []).map(o => `${o.id}:${(o.declinedBy || []).length}`).join(",")
+    offers: (s.tradeOffers || []).map(o => `${o.id}:${(o.declinedBy || []).length}`).join(","),
+    turnActionTick: curPlayer ? curPlayer.actionsThisTurn || 0 : 0,
+    buildingsCount: Object.keys(s.board.buildings || {}).length,
+    roadsCount: Object.keys(s.board.roads || {}).length,
+    devDeckLen: s.devDeck.length
   });
 }
 function vertexScore(board, vid) {
@@ -6259,6 +6574,8 @@ function botResolveDiscard(s, botId) {
 }
 function botResolveRobber(s, botId) {
   const board = s.board;
+  const botPlayer = s.players.find(p => p.id === botId);
+  const style = botPlayer?.botStyle || "balanced";
   const candidates = board.hexes.filter(h => h.id !== board.robberHexId && h.resource !== "sea");
   function score(h) {
     let sc = 0,
@@ -6270,6 +6587,7 @@ function botResolveRobber(s, botId) {
         if (b.owner === botId) touchesMine = true;else {
           touchesOpp = true;
           sc += b.type === "city" ? 2 : 1;
+          if (style === "aggressive" && !s.players.find(p => p.id === b.owner)?.isBot) sc += 3;
         }
       }
     });
@@ -6279,17 +6597,29 @@ function botResolveRobber(s, botId) {
   }
   let best = candidates[0];
   let bestScore = -Infinity;
-  candidates.forEach(h => {
-    const sc = score(h);
-    if (sc > bestScore) {
-      bestScore = sc;
-      best = h;
-    }
-  });
+  if (style === "random") {
+    best = candidates[Math.floor(Math.random() * candidates.length)];
+  } else {
+    candidates.forEach(h => {
+      const sc = score(h);
+      if (sc > bestScore) {
+        bestScore = sc;
+        best = h;
+      }
+    });
+  }
   if (!best) return s;
   moveRobber(s, botId, best.id);
   if (s.robberStealChoices && s.robberStealChoices.length) {
-    const victim = [...s.robberStealChoices].sort((a, b) => totalCards(s.players.find(p => p.id === b).resources) - totalCards(s.players.find(p => p.id === a).resources))[0];
+    let victim;
+    if (style === "random") {
+      victim = s.robberStealChoices[Math.floor(Math.random() * s.robberStealChoices.length)];
+    } else if (style === "easy") {
+      const bots = s.robberStealChoices.filter(id => s.players.find(p => p.id === id)?.isBot);
+      victim = bots[0] || s.robberStealChoices[0];
+    } else {
+      victim = [...s.robberStealChoices].sort((a, b) => totalCards(s.players.find(p => p.id === b).resources) - totalCards(s.players.find(p => p.id === a).resources))[0];
+    }
     resolveSteal(s, botId, victim);
   }
   return s;
@@ -6297,11 +6627,19 @@ function botResolveRobber(s, botId) {
 function botRespondToTrades(s, botId) {
   const offers = (s.tradeOffers || []).filter(o => (o.to === botId || o.to === null) && o.from !== botId && !(o.declinedBy || []).includes(botId));
   const p = s.players.find(pl => pl.id === botId);
+  const style = p.botStyle || "balanced";
   for (const offer of offers) {
     const canAffordWant = RES.every(r => p.resources[r] >= offer.want[r]);
     const giveTotal = totalCards(offer.give),
       wantTotal = totalCards(offer.want);
-    if (canAffordWant && giveTotal >= wantTotal) {
+    const threshold = {
+      easy: -1,
+      balanced: 0,
+      aggressive: 1,
+      random: 0
+    }[style] ?? 0;
+    const favorable = giveTotal - wantTotal >= threshold;
+    if (canAffordWant && favorable) {
       return acceptTradeOffer(s, offer.id, botId);
     }
     declineTradeOffer(s, offer.id, botId);
@@ -6311,6 +6649,14 @@ function botRespondToTrades(s, botId) {
 function botProposeTrade(s, botId) {
   const p = s.players.find(pl => pl.id === botId);
   p.lastTradeOfferTurn = s.turnCounter;
+  const style = p.botStyle || "balanced";
+  const chance = {
+    easy: 0.85,
+    balanced: 0.45,
+    aggressive: 0.15,
+    random: 0.5
+  }[style] ?? 0.45;
+  if (Math.random() > chance) return s;
   const overflow = RES.filter(r => p.resources[r] >= 3).sort((a, b) => p.resources[b] - p.resources[a])[0];
   const need = RES.find(r => p.resources[r] === 0 && r !== overflow) || RES.find(r => r !== overflow);
   if (!overflow || !need) return s;
@@ -6341,79 +6687,89 @@ function botDoSetup(s, botId) {
   return s;
 }
 function botDoFullTurn(s, botId) {
+  const player = s.players.find(pl => pl.id === botId);
   if (s.turnPhase === "roll") {
     rollDice(s, botId);
     if (Object.keys(s.pendingDiscards).length > 0) return s;
     if (s.robberMoveRequired === botId) botResolveRobber(s, botId);
+    return s;
   }
-  let guard = 0;
-  while (guard++ < 12) {
-    const player = s.players.find(pl => pl.id === botId);
-    const mySettlements = Object.entries(s.board.buildings).filter(([, b]) => b.owner === botId && b.type === "settlement").map(([vid]) => vid);
-    if (canAfford(player.resources, COSTS.city) && mySettlements.length && (player.citiesLeft ?? 4) > 0) {
-      mySettlements.sort((a, b) => vertexScore(s.board, b) - vertexScore(s.board, a));
-      buildCity(s, botId, mySettlements[0]);
-      continue;
+  player.actionsThisTurn = player.actionsThisTurn || 0;
+  if (player.actionsThisTurn >= 7) {
+    endTurn(s);
+    checkWinner(s);
+    return s;
+  }
+  const mySettlements = Object.entries(s.board.buildings).filter(([, b]) => b.owner === botId && b.type === "settlement").map(([vid]) => vid);
+  if (canAfford(player.resources, COSTS.city) && mySettlements.length && (player.citiesLeft ?? 4) > 0) {
+    mySettlements.sort((a, b) => vertexScore(s.board, b) - vertexScore(s.board, a));
+    buildCity(s, botId, mySettlements[0]);
+    player.actionsThisTurn += 1;
+    return s;
+  }
+  const openSpots = s.board.vertices.filter(v => isValidSettlementSpot(s.board, v.id, botId, true));
+  if (canAfford(player.resources, COSTS.settlement) && openSpots.length && (player.settlementsLeft ?? 5) > 0) {
+    openSpots.sort((a, b) => vertexScore(s.board, b.id) - vertexScore(s.board, a.id));
+    buildSettlement(s, botId, openSpots[0].id);
+    player.actionsThisTurn += 1;
+    return s;
+  }
+  const openRoads = s.board.edges.filter(e => isValidRoadSpot(s.board, e.id, botId));
+  if (canAfford(player.resources, COSTS.road) && openRoads.length && player.actionsThisTurn < 3 && (player.roadsLeft ?? 15) > 0) {
+    buildRoad(s, botId, openRoads[Math.floor(Math.random() * openRoads.length)].id);
+    player.actionsThisTurn += 1;
+    return s;
+  }
+  if (s.options?.seafarers) {
+    const openShips = s.board.edges.filter(e => isValidShipSpot(s.board, e.id, botId));
+    if (canAfford(player.resources, COSTS.ship) && openShips.length && player.actionsThisTurn < 3 && (player.shipsLeft ?? 15) > 0) {
+      buildShip(s, botId, openShips[Math.floor(Math.random() * openShips.length)].id);
+      player.actionsThisTurn += 1;
+      return s;
     }
-    const openSpots = s.board.vertices.filter(v => isValidSettlementSpot(s.board, v.id, botId, true));
-    if (canAfford(player.resources, COSTS.settlement) && openSpots.length && (player.settlementsLeft ?? 5) > 0) {
-      openSpots.sort((a, b) => vertexScore(s.board, b.id) - vertexScore(s.board, a.id));
-      buildSettlement(s, botId, openSpots[0].id);
-      continue;
+  }
+  if (canAfford(player.resources, COSTS.dev) && s.devDeck.length > 0 && player.actionsThisTurn < 5) {
+    player.resources = payCost(player.resources, COSTS.dev);
+    Object.entries(COSTS.dev).forEach(([r, n]) => s.bank[r] += n);
+    const card = s.devDeck.pop();
+    player.devCards.push({
+      type: card,
+      turnBought: s.turnCounter
+    });
+    addLog(s, `${player.name} bought a development card.`);
+    player.actionsThisTurn += 1;
+    return s;
+  }
+  const knight = player.devCards.find(c => c.type === "knight" && c.turnBought < s.turnCounter);
+  if (knight && !player.devPlayedThisTurn) {
+    const robberHex = s.board.hexes.find(h => h.id === s.board.robberHexId);
+    const hurtsMe = robberHex && robberHex.cornerIds.some(vid => s.board.buildings[vid]?.owner === botId);
+    if (hurtsMe) {
+      const idx = player.devCards.indexOf(knight);
+      player.devCards.splice(idx, 1);
+      player.devPlayedThisTurn = true;
+      player.playedKnights += 1;
+      recalcLargestArmy(s);
+      addLog(s, `${player.name} played a Knight.`);
+      botResolveRobber(s, botId);
+      player.actionsThisTurn += 1;
+      return s;
     }
-    const openRoads = s.board.edges.filter(e => isValidRoadSpot(s.board, e.id, botId));
-    if (canAfford(player.resources, COSTS.road) && openRoads.length && guard < 4 && (player.roadsLeft ?? 15) > 0) {
-      buildRoad(s, botId, openRoads[Math.floor(Math.random() * openRoads.length)].id);
-      continue;
-    }
-    if (s.options?.seafarers) {
-      const openShips = s.board.edges.filter(e => isValidShipSpot(s.board, e.id, botId));
-      if (canAfford(player.resources, COSTS.ship) && openShips.length && guard < 4 && (player.shipsLeft ?? 15) > 0) {
-        buildShip(s, botId, openShips[Math.floor(Math.random() * openShips.length)].id);
-        continue;
+  }
+  const overflow = RES.find(r => player.resources[r] >= 5);
+  if (overflow) {
+    const need = RES.find(r => player.resources[r] === 0);
+    if (need) {
+      const ratio = playerPortRatio(s.board, botId, overflow);
+      if (player.resources[overflow] >= ratio && s.bank[need] > 0) {
+        player.resources[overflow] -= ratio;
+        s.bank[overflow] += ratio;
+        player.resources[need] += 1;
+        s.bank[need] -= 1;
+        player.actionsThisTurn += 1;
+        return s;
       }
     }
-    if (canAfford(player.resources, COSTS.dev) && s.devDeck.length > 0 && guard < 6) {
-      player.resources = payCost(player.resources, COSTS.dev);
-      Object.entries(COSTS.dev).forEach(([r, n]) => s.bank[r] += n);
-      const card = s.devDeck.pop();
-      player.devCards.push({
-        type: card,
-        turnBought: s.turnCounter
-      });
-      addLog(s, `${player.name} bought a development card.`);
-      continue;
-    }
-    const knight = player.devCards.find(c => c.type === "knight" && c.turnBought < s.turnCounter);
-    if (knight && !player.devPlayedThisTurn) {
-      const robberHex = s.board.hexes.find(h => h.id === s.board.robberHexId);
-      const hurtsMe = robberHex && robberHex.cornerIds.some(vid => s.board.buildings[vid]?.owner === botId);
-      if (hurtsMe) {
-        const idx = player.devCards.indexOf(knight);
-        player.devCards.splice(idx, 1);
-        player.devPlayedThisTurn = true;
-        player.playedKnights += 1;
-        recalcLargestArmy(s);
-        addLog(s, `${player.name} played a Knight.`);
-        botResolveRobber(s, botId);
-        continue;
-      }
-    }
-    const overflow = RES.find(r => player.resources[r] >= 5);
-    if (overflow) {
-      const need = RES.find(r => player.resources[r] === 0);
-      if (need) {
-        const ratio = playerPortRatio(s.board, botId, overflow);
-        if (player.resources[overflow] >= ratio && s.bank[need] > 0) {
-          player.resources[overflow] -= ratio;
-          s.bank[overflow] += ratio;
-          player.resources[need] += 1;
-          s.bank[need] -= 1;
-          continue;
-        }
-      }
-    }
-    break;
   }
   endTurn(s);
   checkWinner(s);
