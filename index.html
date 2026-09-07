@@ -79,7 +79,8 @@ const {
   useState,
   useEffect,
   useRef,
-  useCallback
+  useCallback,
+  useMemo
 } = React;
 
 /* ============================== CONSTANTS ============================== */
@@ -520,24 +521,292 @@ function californiaCoords() {
   });
 }
 function michiganCoords() {
-  const body = rowShapeCoords([2, 3, 4, 4, 5, 5, 5, 5, 4, 4, 4]);
+  // Lower Peninsula body: narrow at the Mackinac Straits (north), widening
+  // south, with a bite taken out for Saginaw Bay and a thumb poking east.
+  let body = rowShapeCoords([2, 3, 4, 4, 5, 5, 5, 5, 5, 4, 4, 3]);
+  body = body.filter(c => !(c.r === 6 && c.q === -1)); // Saginaw Bay notch
   const thumb = [{
-    q: 1,
-    r: 4
+    q: -1,
+    r: 8
   }, {
-    q: 2,
-    r: 4
+    q: 0,
+    r: 8
   }, {
     q: 1,
-    r: 5
+    r: 8
+  }, {
+    q: -2,
+    r: 9
+  }, {
+    q: -1,
+    r: 9
   }];
-  const up = translateCoords(rowShapeCoords([6, 5]), -3, -4);
+  // Upper Peninsula: wide, flat, east-west — separated from the mitten by
+  // the Straits of Mackinac.
+  const up = translateCoords(rowShapeCoords([9, 7]), -3, -4);
   return [...body, ...thumb, ...up];
 }
-function northAmericaCoords() {
-  // Wide north (Canada), tapering south through the US into a narrow
-  // Central American point — a proper continent wedge, not a small blob.
-  return rowShapeCoords([7, 8, 8, 7, 7, 6, 6, 5, 4, 4, 3, 2]);
+const MICHIGAN_CITIES = [{
+  name: "Sault Ste. Marie",
+  q: 0,
+  r: -3
+}, {
+  name: "Marquette",
+  q: -3,
+  r: -4
+}, {
+  name: "Escanaba",
+  q: -6,
+  r: -4
+}, {
+  name: "Petoskey",
+  q: -1,
+  r: 0
+}, {
+  name: "Traverse City",
+  q: -1,
+  r: 1
+}, {
+  name: "Muskegon",
+  q: -4,
+  r: 4
+}, {
+  name: "Grand Haven",
+  q: -4,
+  r: 5
+}, {
+  name: "Holland",
+  q: -5,
+  r: 6
+}, {
+  name: "Grand Rapids",
+  q: -3,
+  r: 6
+}, {
+  name: "Wayland",
+  q: -4,
+  r: 7
+}, {
+  name: "Lansing",
+  q: -1,
+  r: 7
+}, {
+  name: "Flint",
+  q: 0,
+  r: 8
+}, {
+  name: "Saginaw",
+  q: 1,
+  r: 8
+}, {
+  name: "Kalamazoo",
+  q: -5,
+  r: 9
+}, {
+  name: "Battle Creek",
+  q: -3,
+  r: 9
+}, {
+  name: "Ann Arbor",
+  q: -5,
+  r: 10
+}, {
+  name: "Detroit",
+  q: -4,
+  r: 11
+}];
+function usaCoords() {
+  // Wide continental body, with a Florida peninsula tapering south off the
+  // southeast and a Texas/Gulf bulge dropping south from the south-center.
+  const body = rowShapeCoords([10, 12, 12, 13, 13, 12, 11, 10, 8]);
+  const florida = [{
+    q: -2,
+    r: 9
+  }, {
+    q: -1,
+    r: 9
+  }, {
+    q: -2,
+    r: 10
+  }, {
+    q: -1,
+    r: 10
+  }, {
+    q: -1,
+    r: 11
+  }, {
+    q: -1,
+    r: 12
+  }];
+  const texasGulf = [{
+    q: -6,
+    r: 9
+  }, {
+    q: -5,
+    r: 9
+  }, {
+    q: -6,
+    r: 10
+  }, {
+    q: -5,
+    r: 10
+  }, {
+    q: -6,
+    r: 11
+  }];
+  return [...body, ...florida, ...texasGulf];
+}
+
+/* ============================== RANDOM / GENERATED SHAPES ================= */
+
+const AXIAL_DIRS = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
+function ringCoordsAround(landCoords, ringWidth = 1) {
+  const landSet = new Set(landCoords.map(c => `${c.q},${c.r}`));
+  let currentSet = new Set(landSet);
+  const ring = new Set();
+  for (let i = 0; i < ringWidth; i++) {
+    const newlyAdded = new Set();
+    currentSet.forEach(key => {
+      const [q, r] = key.split(",").map(Number);
+      AXIAL_DIRS.forEach(([dq, dr]) => {
+        const nkey = `${q + dq},${r + dr}`;
+        if (!currentSet.has(nkey)) newlyAdded.add(nkey);
+      });
+    });
+    newlyAdded.forEach(k => {
+      ring.add(k);
+      currentSet.add(k);
+    });
+  }
+  return [...ring].map(k => {
+    const [q, r] = k.split(",").map(Number);
+    return {
+      q,
+      r
+    };
+  });
+}
+function michiganSeafarersConfig() {
+  const land = michiganCoords();
+  const ring = ringCoordsAround(land, 1);
+  const coords = [...land, ...ring];
+  const forcedTypes = {};
+  ring.forEach(c => forcedTypes[`${c.q},${c.r}`] = "sea");
+  const shuffledRing = shuffle(ring);
+  shuffledRing.slice(0, 3).forEach(c => forcedTypes[`${c.q},${c.r}`] = "gold");
+  return {
+    coords,
+    size: 34,
+    desertCount: 3,
+    forcedTypes,
+    cities: MICHIGAN_CITIES
+  };
+}
+function growBlob(startQ, startR, targetCount, avoidSet) {
+  const used = new Set(avoidSet || []);
+  const startKey = `${startQ},${startR}`;
+  if (used.has(startKey)) return [];
+  const coords = [{
+    q: startQ,
+    r: startR
+  }];
+  const inShape = new Set([startKey]);
+  const frontier = new Set();
+  const addFrontier = (q, r) => {
+    AXIAL_DIRS.forEach(([dq, dr]) => {
+      const key = `${q + dq},${r + dr}`;
+      if (!inShape.has(key) && !used.has(key)) frontier.add(key);
+    });
+  };
+  addFrontier(startQ, startR);
+  let guard = 0;
+  while (coords.length < targetCount && frontier.size > 0 && guard++ < targetCount * 25) {
+    const candidates = [...frontier];
+    const scored = candidates.map(key => {
+      const [q, r] = key.split(",").map(Number);
+      const neighborsInShape = AXIAL_DIRS.filter(([dq, dr]) => inShape.has(`${q + dq},${r + dr}`)).length;
+      return {
+        key,
+        q,
+        r,
+        score: Math.pow(neighborsInShape + 1, 2) * (0.4 + Math.random() * 0.9)
+      };
+    });
+    scored.sort((a, b) => b.score - a.score);
+    const pick = scored[Math.floor(Math.random() * Math.min(3, scored.length))];
+    coords.push({
+      q: pick.q,
+      r: pick.r
+    });
+    inShape.add(pick.key);
+    frontier.delete(pick.key);
+    addFrontier(pick.q, pick.r);
+  }
+  return coords;
+}
+function randomBlobMapCoords(targetCount) {
+  return growBlob(0, 0, targetCount, null);
+}
+function randomIslandsMapCoords(targetCount) {
+  const islandCount = targetCount <= 24 ? 2 : targetCount <= 40 ? 3 : targetCount <= 55 ? 4 : 5;
+  const used = new Set();
+  const allCoords = [];
+  const basePerIsland = Math.floor(targetCount / islandCount);
+  for (let i = 0; i < islandCount; i++) {
+    const angle = i / islandCount * Math.PI * 2 + Math.random() * 0.4;
+    const dist = 5 + Math.sqrt(targetCount) * 0.4 + Math.random() * 1.5;
+    let startQ = Math.round(Math.cos(angle) * dist);
+    let startR = Math.round(Math.sin(angle) * dist * 0.8);
+    let tries = 0;
+    while (used.has(`${startQ},${startR}`) && tries++ < 10) startQ += 1;
+    const remaining = targetCount - allCoords.length;
+    const size = i === islandCount - 1 ? remaining : Math.max(3, basePerIsland + Math.floor(Math.random() * 3) - 1);
+    const blob = growBlob(startQ, startR, Math.max(3, size), used);
+    blob.forEach(c => {
+      allCoords.push(c);
+      used.add(`${c.q},${c.r}`);
+    });
+  }
+  return allCoords;
+}
+const RANDOM_MAP_SIZES = {
+  small: {
+    label: "Small",
+    count: 19,
+    hexSize: 44
+  },
+  medium: {
+    label: "Medium",
+    count: 30,
+    hexSize: 40
+  },
+  large: {
+    label: "Large",
+    count: 45,
+    hexSize: 36
+  },
+  xl: {
+    label: "Extra Large",
+    count: 62,
+    hexSize: 32
+  }
+};
+function randomMapConfig(size, style) {
+  const spec = RANDOM_MAP_SIZES[size] || RANDOM_MAP_SIZES.medium;
+  const coords = style === "islands" ? randomIslandsMapCoords(spec.count) : randomBlobMapCoords(spec.count);
+  const desertCount = Math.max(1, Math.round(coords.length / 19));
+  const config = {
+    coords,
+    size: spec.hexSize,
+    desertCount
+  };
+  if (style === "islands") {
+    const shuffled = shuffle(coords);
+    const forcedTypes = {};
+    shuffled.slice(0, Math.max(1, Math.round(coords.length / 25))).forEach(c => forcedTypes[`${c.q},${c.r}`] = "gold");
+    config.forcedTypes = forcedTypes;
+  }
+  return config;
 }
 const MAPS = {
   standard: {
@@ -659,68 +928,164 @@ const MAPS = {
       desertCount: 2
     })
   },
-  northAmerica: {
-    name: "North America",
-    desc: "A sprawling continent-shaped board for epic games.",
+  usa: {
+    name: "USA",
+    desc: "The full country, huge — 112 hexes with Florida and the Gulf coast, 22 real cities marked.",
     minP: 4,
     maxP: 6,
     build: () => ({
-      coords: northAmericaCoords(),
-      size: 34,
-      desertCount: 3
+      coords: usaCoords(),
+      size: 30,
+      desertCount: 6,
+      cities: [{
+        name: "Seattle",
+        q: -5,
+        r: 0
+      }, {
+        name: "Minneapolis",
+        q: 0,
+        r: 0
+      }, {
+        name: "Boston",
+        q: 4,
+        r: 0
+      }, {
+        name: "Portland",
+        q: -6,
+        r: 1
+      }, {
+        name: "Chicago",
+        q: 1,
+        r: 1
+      }, {
+        name: "New York",
+        q: 5,
+        r: 1
+      }, {
+        name: "Detroit",
+        q: 3,
+        r: 2
+      }, {
+        name: "San Francisco",
+        q: -7,
+        r: 3
+      }, {
+        name: "Denver",
+        q: -2,
+        r: 3
+      }, {
+        name: "Philadelphia",
+        q: 4,
+        r: 3
+      }, {
+        name: "Salt Lake City",
+        q: -8,
+        r: 4
+      }, {
+        name: "Kansas City",
+        q: -2,
+        r: 4
+      }, {
+        name: "St. Louis",
+        q: 0,
+        r: 4
+      }, {
+        name: "Washington D.C.",
+        q: 3,
+        r: 4
+      }, {
+        name: "Las Vegas",
+        q: -7,
+        r: 5
+      }, {
+        name: "Los Angeles",
+        q: -8,
+        r: 6
+      }, {
+        name: "Phoenix",
+        q: -6,
+        r: 6
+      }, {
+        name: "Oklahoma City",
+        q: -2,
+        r: 6
+      }, {
+        name: "Nashville",
+        q: 0,
+        r: 6
+      }, {
+        name: "San Diego",
+        q: -8,
+        r: 7
+      }, {
+        name: "Dallas",
+        q: -6,
+        r: 7
+      }, {
+        name: "Atlanta",
+        q: -2,
+        r: 7
+      }, {
+        name: "Charlotte",
+        q: 1,
+        r: 7
+      }, {
+        name: "New Orleans",
+        q: -3,
+        r: 8
+      }, {
+        name: "Houston",
+        q: -5,
+        r: 9
+      }, {
+        name: "Jacksonville",
+        q: -2,
+        r: 9
+      }, {
+        name: "San Antonio",
+        q: -6,
+        r: 10
+      }, {
+        name: "Orlando",
+        q: -1,
+        r: 10
+      }, {
+        name: "Miami",
+        q: -1,
+        r: 12
+      }]
     })
   },
   michigan: {
     name: "Michigan",
-    desc: "The mitten and the U.P. — two landmasses, real cities marked.",
+    desc: "The mitten and the U.P. — two landmasses, 17 real cities marked.",
     minP: 4,
     maxP: 6,
     build: () => ({
       coords: michiganCoords(),
-      size: 36,
+      size: 34,
       desertCount: 3,
-      cities: [{
-        name: "Traverse City",
-        q: -1,
-        r: 1
-      }, {
-        name: "Grand Rapids",
-        q: -5,
-        r: 6
-      }, {
-        name: "Holland",
-        q: -4,
-        r: 5
-      }, {
-        name: "Wayland",
-        q: -5,
-        r: 7
-      }, {
-        name: "Kalamazoo",
-        q: -6,
-        r: 8
-      }, {
-        name: "Battle Creek",
-        q: -3,
-        r: 8
-      }, {
-        name: "Lansing",
-        q: -2,
-        r: 7
-      }, {
-        name: "Detroit",
-        q: -3,
-        r: 9
-      }, {
-        name: "Marquette",
-        q: -3,
-        r: -4
-      }]
+      cities: MICHIGAN_CITIES
     })
+  },
+  michiganSeafarers: {
+    name: "Michigan Seafarers",
+    desc: "The mitten ringed by the Great Lakes, with wildcard gold hexes out on the water.",
+    minP: 4,
+    maxP: 6,
+    build: () => michiganSeafarersConfig()
+  },
+  random: {
+    name: "Random",
+    desc: "A freshly generated shape every time — pick a size and style below.",
+    minP: 3,
+    maxP: 6,
+    isRandom: true,
+    build: (maxPlayers, opts = {}) => randomMapConfig(opts.size || "medium", opts.style || "blob")
   },
   california: {
     name: "California",
-    desc: "A long, leaning coastal stretch, real cities marked.",
+    desc: "A long, leaning coastal stretch, 15 real cities marked.",
     minP: 4,
     maxP: 6,
     build: () => ({
@@ -728,6 +1093,14 @@ const MAPS = {
       size: 34,
       desertCount: 3,
       cities: [{
+        name: "Redding",
+        q: 0,
+        r: 0
+      }, {
+        name: "Eureka",
+        q: -1,
+        r: 1
+      }, {
         name: "Sacramento",
         q: 0,
         r: 4
@@ -736,13 +1109,45 @@ const MAPS = {
         q: -1,
         r: 4
       }, {
+        name: "Oakland",
+        q: -2,
+        r: 5
+      }, {
+        name: "San Jose",
+        q: -3,
+        r: 6
+      }, {
         name: "Fresno",
         q: 1,
         r: 7
       }, {
+        name: "Bakersfield",
+        q: 0,
+        r: 9
+      }, {
+        name: "Santa Barbara",
+        q: -4,
+        r: 10
+      }, {
         name: "Los Angeles",
         q: 1,
         r: 10
+      }, {
+        name: "Palm Springs",
+        q: -1,
+        r: 11
+      }, {
+        name: "Anaheim",
+        q: 0,
+        r: 11
+      }, {
+        name: "Long Beach",
+        q: 1,
+        r: 11
+      }, {
+        name: "Riverside",
+        q: -3,
+        r: 12
       }, {
         name: "San Diego",
         q: -1,
@@ -752,7 +1157,7 @@ const MAPS = {
   },
   illinois: {
     name: "Illinois",
-    desc: "A tall central-plains board, real cities marked.",
+    desc: "A tall central-plains board, 11 real cities marked.",
     minP: 3,
     maxP: 6,
     build: () => ({
@@ -760,17 +1165,53 @@ const MAPS = {
       size: 38,
       desertCount: 2,
       cities: [{
+        name: "Rockford",
+        q: -2,
+        r: 0
+      }, {
         name: "Chicago",
         q: 1,
         r: 0
+      }, {
+        name: "Aurora",
+        q: 0,
+        r: 1
+      }, {
+        name: "Rock Island",
+        q: -3,
+        r: 2
+      }, {
+        name: "Joliet",
+        q: 1,
+        r: 2
+      }, {
+        name: "Bloomington",
+        q: -2,
+        r: 4
       }, {
         name: "Peoria",
         q: -2,
         r: 5
       }, {
+        name: "Decatur",
+        q: -4,
+        r: 6
+      }, {
+        name: "Champaign",
+        q: -2,
+        r: 6
+      }, {
         name: "Springfield",
         q: -3,
         r: 7
+      }, {
+        name: "Quincy",
+        q: -5,
+        r: 8
+      }, {
+        name: "Carbondale",
+        q: -6,
+        r: 10
       }, {
         name: "Cairo",
         q: -6,
@@ -977,7 +1418,8 @@ function assignBoard(coords, size, options = {}) {
       ports.push({
         edgeId: e.id,
         type: portTypes[typeCursor % portTypes.length],
-        vertexIds: [e.v1, e.v2]
+        vertexIds: [e.v1, e.v2],
+        hexIdx: e.hexIds[0]
       });
       typeCursor += 1;
     }
@@ -1212,9 +1654,9 @@ function makePlayer(id, name, color, isBot, icon) {
     citiesLeft: 4
   };
 }
-function createNewGame(hostId, hostName, maxPlayers, mapId = "standard", options = {}, hostColor = null, hostIcon = null) {
+function createNewGame(hostId, hostName, maxPlayers, mapId = "standard", options = {}, hostColor = null, hostIcon = null, mapOpts = {}) {
   const map = MAPS[mapId] || MAPS.standard;
-  const built = map.build(maxPlayers);
+  const built = map.build(maxPlayers, mapOpts);
   const geo = assignBoard(built.coords, built.size, built);
   const board = {
     hexes: geo.hexes,
@@ -1336,6 +1778,8 @@ function Landfall() {
   const [joinCodeDraft, setJoinCodeDraft] = useState("");
   const [maxPlayersDraft, setMaxPlayersDraft] = useState(4);
   const [mapDraft, setMapDraft] = useState("standard");
+  const [randomSizeDraft, setRandomSizeDraft] = useState("medium");
+  const [randomStyleDraft, setRandomStyleDraft] = useState("blob");
   const [aiCountDraft, setAiCountDraft] = useState(2);
   const [optionsDraft, setOptionsDraft] = useState({
     ...DEFAULT_OPTIONS
@@ -1398,16 +1842,26 @@ function Landfall() {
       setColorDraft: setColorDraft,
       iconDraft: iconDraft,
       setIconDraft: setIconDraft,
+      randomSizeDraft: randomSizeDraft,
+      setRandomSizeDraft: setRandomSizeDraft,
+      randomStyleDraft: randomStyleDraft,
+      setRandomStyleDraft: setRandomStyleDraft,
       onCreate: async () => {
         const name = nameDraft.trim() || "Player 1";
-        const newState = createNewGame(clientId, name, maxPlayersDraft, mapDraft, optionsDraft, colorDraft, iconDraft);
+        const newState = createNewGame(clientId, name, maxPlayersDraft, mapDraft, optionsDraft, colorDraft, iconDraft, {
+          size: randomSizeDraft,
+          style: randomStyleDraft
+        });
         await saveGame(newState.code, newState);
         setCode(newState.code);
       },
       onSolo: async () => {
         const name = nameDraft.trim() || "Player 1";
         const total = Math.min(6, aiCountDraft + 1);
-        const newState = createNewGame(clientId, name, total, mapDraft, optionsDraft, colorDraft, iconDraft);
+        const newState = createNewGame(clientId, name, total, mapDraft, optionsDraft, colorDraft, iconDraft, {
+          size: randomSizeDraft,
+          style: randomStyleDraft
+        });
         const botNames = shuffle(BOT_NAMES);
         const remainingColors = PLAYER_COLORS.filter(c => c !== colorDraft);
         const remainingIcons = PLAYER_ICONS.filter(c => c !== iconDraft);
@@ -1647,7 +2101,11 @@ function Btn({
 
 function MapPicker({
   mapDraft,
-  setMapDraft
+  setMapDraft,
+  randomSizeDraft,
+  setRandomSizeDraft,
+  randomStyleDraft,
+  setRandomStyleDraft
 }) {
   return /*#__PURE__*/React.createElement(Field, {
     label: "Map"
@@ -1658,10 +2116,12 @@ function MapPicker({
       flexDirection: "column",
       gap: 6
     }
-  }, Object.entries(MAPS).map(([id, m]) => /*#__PURE__*/React.createElement("button", {
-    key: id,
+  }, Object.entries(MAPS).map(([id, m]) => /*#__PURE__*/React.createElement("div", {
+    key: id
+  }, /*#__PURE__*/React.createElement("button", {
     onClick: () => setMapDraft(id),
     style: {
+      width: "100%",
       textAlign: "left",
       padding: "8px 10px",
       borderRadius: 8,
@@ -1684,7 +2144,65 @@ function MapPicker({
       fontSize: 12,
       color: "#d9cba4"
     }
-  }, m.desc)))));
+  }, m.desc)), m.isRandom && mapDraft === id && /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: "8px 4px 2px 4px",
+      display: "flex",
+      flexDirection: "column",
+      gap: 8
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#a89a7e",
+      marginBottom: 4
+    }
+  }, "Size"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 6,
+      flexWrap: "wrap"
+    }
+  }, Object.entries(RANDOM_MAP_SIZES).map(([key, s]) => /*#__PURE__*/React.createElement("button", {
+    key: key,
+    onClick: () => setRandomSizeDraft(key),
+    style: {
+      padding: "5px 9px",
+      borderRadius: 7,
+      fontSize: 12,
+      border: randomSizeDraft === key ? "2px solid var(--gold)" : "1px solid #8a7a55",
+      background: randomSizeDraft === key ? "rgba(232,182,76,0.18)" : "rgba(0,0,0,0.2)",
+      color: "#f7edd3"
+    }
+  }, s.label, " (", s.count, ")")))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#a89a7e",
+      marginBottom: 4
+    }
+  }, "Style"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 6
+    }
+  }, [{
+    value: "blob",
+    label: "Blob (base game)"
+  }, {
+    value: "islands",
+    label: "Islands (seafarers)"
+  }].map(opt => /*#__PURE__*/React.createElement("button", {
+    key: opt.value,
+    onClick: () => setRandomStyleDraft(opt.value),
+    style: {
+      padding: "5px 9px",
+      borderRadius: 7,
+      fontSize: 12,
+      border: randomStyleDraft === opt.value ? "2px solid var(--gold)" : "1px solid #8a7a55",
+      background: randomStyleDraft === opt.value ? "rgba(232,182,76,0.18)" : "rgba(0,0,0,0.2)",
+      color: "#f7edd3"
+    }
+  }, opt.label)))))))));
 }
 function OptionRow({
   label,
@@ -1807,6 +2325,10 @@ function Home({
   setColorDraft,
   iconDraft,
   setIconDraft,
+  randomSizeDraft,
+  setRandomSizeDraft,
+  randomStyleDraft,
+  setRandomStyleDraft,
   onCreate,
   onSolo,
   onJoin,
@@ -1929,7 +2451,11 @@ function Home({
     className: "lf-setup-col-map"
   }, /*#__PURE__*/React.createElement(MapPicker, {
     mapDraft: mapDraft,
-    setMapDraft: setMapDraft
+    setMapDraft: setMapDraft,
+    randomSizeDraft: randomSizeDraft,
+    setRandomSizeDraft: setRandomSizeDraft,
+    randomStyleDraft: randomStyleDraft,
+    setRandomStyleDraft: setRandomStyleDraft
   }))), mode === "solo" && /*#__PURE__*/React.createElement("div", {
     className: "lf-setup-grid"
   }, /*#__PURE__*/React.createElement("div", {
@@ -1974,7 +2500,11 @@ function Home({
     className: "lf-setup-col-map"
   }, /*#__PURE__*/React.createElement(MapPicker, {
     mapDraft: mapDraft,
-    setMapDraft: setMapDraft
+    setMapDraft: setMapDraft,
+    randomSizeDraft: randomSizeDraft,
+    setRandomSizeDraft: setRandomSizeDraft,
+    randomStyleDraft: randomStyleDraft,
+    setRandomStyleDraft: setRandomStyleDraft
   }))), mode === "join" && /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
@@ -2549,6 +3079,13 @@ function Board({
   const currentPlayerId = state.phase === "setup" ? state.turnOrder[state.currentIndex] : state.turnOrder[state.currentIndex];
   const isMyTurn = currentPlayerId === clientId;
   const board = state.board;
+  const cityByHex = useMemo(() => {
+    const map = {};
+    (board.cities || []).forEach(c => {
+      map[`${c.q},${c.r}`] = c.name;
+    });
+    return map;
+  }, [board.cities]);
   const needsDiscard = state.pendingDiscards && state.pendingDiscards[clientId] > 0;
   const needsRobberMove = state.robberMoveRequired === clientId;
   const needsStealChoice = state.robberStealChoices && isMyTurn;
@@ -2795,95 +3332,85 @@ function Board({
   }), /*#__PURE__*/React.createElement("stop", {
     offset: "100%",
     stopColor: "#eeddb3"
+  })), /*#__PURE__*/React.createElement("filter", {
+    id: "hexGrain",
+    x: "-20%",
+    y: "-20%",
+    width: "140%",
+    height: "140%"
+  }, /*#__PURE__*/React.createElement("feTurbulence", {
+    type: "fractalNoise",
+    baseFrequency: "0.9",
+    numOctaves: "2",
+    seed: "7",
+    result: "noise"
+  }), /*#__PURE__*/React.createElement("feColorMatrix", {
+    in: "noise",
+    type: "matrix",
+    values: "0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.9 0"
   }))), board.hexes.map(h => /*#__PURE__*/React.createElement(HexTile, {
     key: h.id,
     hex: h,
     isRobber: board.robberHexId === h.id,
     onClick: () => handleHexClick(h.id),
-    clickable: needsRobberMove
-  })), (board.cities || []).map((c, i) => {
-    const h = board.hexes.find(hx => hx.q === c.q && hx.r === c.r);
-    if (!h) return null;
-    return /*#__PURE__*/React.createElement("g", {
-      key: i,
-      style: {
-        pointerEvents: "none"
-      }
-    }, /*#__PURE__*/React.createElement("circle", {
-      cx: h.cx,
-      cy: h.cy,
-      r: 3,
-      fill: "#fff",
-      stroke: "#241c12",
-      strokeWidth: 1
-    }), /*#__PURE__*/React.createElement("text", {
-      x: h.cx,
-      y: h.cy - 7,
-      textAnchor: "middle",
-      fontSize: 9,
-      fontWeight: 700,
-      fill: "#fff",
-      stroke: "#241c12",
-      strokeWidth: 2.5,
-      paintOrder: "stroke",
-      style: {
-        fontFamily: "'Fraunces', serif"
-      }
-    }, c.name));
-  }), board.ports.map((p, i) => {
+    clickable: needsRobberMove,
+    cityName: cityByHex[`${h.q},${h.r}`]
+  })), board.ports.map((p, i) => {
     const v1 = board.vertices.find(v => v.id === p.vertexIds[0]);
     const v2 = board.vertices.find(v => v.id === p.vertexIds[1]);
     const mx = (v1.x + v2.x) / 2,
       my = (v1.y + v2.y) / 2;
+    const hexRef = board.hexes[p.hexIdx];
+    let ox = mx,
+      oy = my;
+    if (hexRef) {
+      const dx = mx - hexRef.cx,
+        dy = my - hexRef.cy;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      ox = mx + dx / dist * 22;
+      oy = my + dy / dist * 22;
+    }
     const ratio = p.type === "3:1" ? "3:1" : "2:1";
     return /*#__PURE__*/React.createElement("g", {
       key: i
     }, /*#__PURE__*/React.createElement("line", {
       x1: v1.x,
       y1: v1.y,
-      x2: mx,
-      y2: my,
+      x2: ox,
+      y2: oy,
       stroke: "#7a6a4a",
       strokeWidth: 1.5,
       strokeDasharray: "2,2"
     }), /*#__PURE__*/React.createElement("line", {
       x1: v2.x,
       y1: v2.y,
-      x2: mx,
-      y2: my,
+      x2: ox,
+      y2: oy,
       stroke: "#7a6a4a",
       strokeWidth: 1.5,
       strokeDasharray: "2,2"
-    }), /*#__PURE__*/React.createElement("rect", {
-      x: mx - 1.8,
-      y: my + 8,
-      width: 3.6,
-      height: 9,
-      fill: "#5a4023",
-      stroke: "#2a1c10",
-      strokeWidth: 0.6
     }), /*#__PURE__*/React.createElement("polygon", {
-      points: `${mx},${my - 15} ${mx + 14},${my + 9} ${mx - 14},${my + 9}`,
+      points: `${ox},${oy - 15} ${ox + 14},${oy + 9} ${ox - 14},${oy + 9}`,
       fill: "#f7edd0",
       stroke: "#4a3220",
       strokeWidth: 1.5
     }), /*#__PURE__*/React.createElement("line", {
-      x1: mx - 9,
-      y1: my + 3,
-      x2: mx + 9,
-      y2: my + 3,
+      x1: ox - 9,
+      y1: oy + 3,
+      x2: ox + 9,
+      y2: oy + 3,
       stroke: "#c9b58a",
       strokeWidth: 0.6,
       opacity: 0.7
     }), /*#__PURE__*/React.createElement("text", {
-      x: mx,
-      y: my - 1,
+      x: ox,
+      y: oy - 1,
       fontSize: 10,
       textAnchor: "middle",
       fill: "#4a3220"
     }, p.type === "3:1" ? "⚓" : RES_ICON[p.type]), /*#__PURE__*/React.createElement("text", {
-      x: mx,
-      y: my + 7,
+      x: ox,
+      y: oy + 7,
       fontSize: 7,
       textAnchor: "middle",
       fontWeight: 800,
@@ -3105,22 +3632,33 @@ function isValidRoadSpotOrSetup(state, board, edgeId, clientId) {
   }
   return isValidRoadSpot(board, edgeId, clientId);
 }
+function hashStr(s) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = h * 31 + s.charCodeAt(i) | 0;
+  return Math.abs(h);
+}
 function HexDecor({
   hex
 }) {
   const s = hex.size;
+  const seed = hashStr(hex.id);
+  const jitter = (n, range) => ((seed >> n) % 100 / 100 - 0.5) * range;
   const positions = [{
-    x: hex.cx - s * 0.52,
-    y: hex.cy + s * 0.34
+    x: hex.cx - s * 0.52 + jitter(1, 6),
+    y: hex.cy + s * 0.34 + jitter(2, 6)
   }, {
-    x: hex.cx + s * 0.52,
-    y: hex.cy + s * 0.34
+    x: hex.cx + s * 0.52 + jitter(3, 6),
+    y: hex.cy + s * 0.34 + jitter(4, 6)
+  }, {
+    x: hex.cx + jitter(5, 8),
+    y: hex.cy - s * 0.6 + jitter(6, 5)
   }];
+  const op = (base, n) => base + jitter(n, 0.22);
   const r = hex.resource;
   if (r === "wood") {
     return /*#__PURE__*/React.createElement(React.Fragment, null, positions.map((p, i) => /*#__PURE__*/React.createElement("g", {
       key: i,
-      opacity: 0.55
+      opacity: op(0.55, i + 7)
     }, /*#__PURE__*/React.createElement("polygon", {
       points: `${p.x},${p.y - 7} ${p.x - 5},${p.y + 3} ${p.x + 5},${p.y + 3}`,
       fill: "#1f3d1a"
@@ -3135,7 +3673,7 @@ function HexDecor({
   if (r === "brick") {
     return /*#__PURE__*/React.createElement(React.Fragment, null, positions.map((p, i) => /*#__PURE__*/React.createElement("g", {
       key: i,
-      opacity: 0.5,
+      opacity: op(0.5, i + 7),
       stroke: "#5a1f00",
       strokeWidth: 0.9,
       fill: "none"
@@ -3159,7 +3697,7 @@ function HexDecor({
   if (r === "sheep") {
     return /*#__PURE__*/React.createElement(React.Fragment, null, positions.map((p, i) => /*#__PURE__*/React.createElement("g", {
       key: i,
-      opacity: 0.65
+      opacity: op(0.65, i + 7)
     }, /*#__PURE__*/React.createElement("circle", {
       cx: p.x - 4,
       cy: p.y,
@@ -3180,7 +3718,7 @@ function HexDecor({
   if (r === "wheat") {
     return /*#__PURE__*/React.createElement(React.Fragment, null, positions.map((p, i) => /*#__PURE__*/React.createElement("g", {
       key: i,
-      opacity: 0.65,
+      opacity: op(0.65, i + 7),
       stroke: "#6b4a10",
       strokeWidth: 1,
       strokeLinecap: "round"
@@ -3214,15 +3752,15 @@ function HexDecor({
   if (r === "ore") {
     return /*#__PURE__*/React.createElement(React.Fragment, null, positions.map((p, i) => /*#__PURE__*/React.createElement("polygon", {
       key: i,
-      opacity: 0.55,
+      opacity: op(0.55, i + 7),
       points: `${p.x - 5},${p.y + 4} ${p.x - 2},${p.y - 5} ${p.x + 2},${p.y - 2} ${p.x + 5},${p.y + 4}`,
       fill: "#3a4147"
     })));
   }
   if (r === "desert") {
-    return /*#__PURE__*/React.createElement(React.Fragment, null, positions.map((p, i) => /*#__PURE__*/React.createElement("g", {
+    return /*#__PURE__*/React.createElement(React.Fragment, null, positions.slice(0, 2).map((p, i) => /*#__PURE__*/React.createElement("g", {
       key: i,
-      opacity: 0.5,
+      opacity: op(0.5, i + 7),
       stroke: "#7a6420",
       strokeWidth: 2,
       strokeLinecap: "round"
@@ -3249,13 +3787,15 @@ function HexTile({
   hex,
   isRobber,
   onClick,
-  clickable
+  clickable,
+  cityName
 }) {
   const corners = hexCorners(hex.cx, hex.cy, hex.size);
   const points = corners.map(c => `${c.x},${c.y}`).join(" ");
   const dots = DOTS[hex.number] || 0;
-  const dotSpacing = 4.2;
+  const dotSpacing = 3.1;
   const dotStartX = hex.cx - (dots - 1) * dotSpacing / 2;
+  const hot = hex.number === 6 || hex.number === 8;
   return /*#__PURE__*/React.createElement("g", {
     id: `hex-${hex.id}`,
     onClick: onClick,
@@ -3268,6 +3808,13 @@ function HexTile({
     stroke: "#241c12",
     strokeWidth: 1.5,
     opacity: clickable ? 0.8 : 1
+  }), /*#__PURE__*/React.createElement("polygon", {
+    points: points,
+    fill: "url(#hexGrain)",
+    opacity: 0.5,
+    style: {
+      mixBlendMode: "overlay"
+    }
   }), /*#__PURE__*/React.createElement("polygon", {
     points: points,
     fill: "none",
@@ -3286,7 +3833,7 @@ function HexTile({
     textAnchor: "middle",
     fontSize: hex.size * 0.4,
     opacity: 0.5
-  }, "〜"), hex.number && /*#__PURE__*/React.createElement("g", null, /*#__PURE__*/React.createElement("ellipse", {
+  }, "〜"), hex.number && !cityName && /*#__PURE__*/React.createElement("g", null, /*#__PURE__*/React.createElement("ellipse", {
     cx: hex.cx,
     cy: hex.cy + 2.5,
     rx: 14,
@@ -3299,32 +3846,88 @@ function HexTile({
     fill: "url(#tokenFace)",
     stroke: "#241c12",
     strokeWidth: 1.2
-  }), /*#__PURE__*/React.createElement("circle", {
-    cx: hex.cx,
-    cy: hex.cy,
-    r: 11.8,
-    fill: "none",
-    stroke: hex.number === 6 || hex.number === 8 ? "#b33a2e" : "#8a6d3b",
-    strokeWidth: 0.7,
-    strokeDasharray: "1.6,1.6",
-    opacity: 0.65
   }), /*#__PURE__*/React.createElement("text", {
     x: hex.cx,
-    y: hex.cy + 4.5,
+    y: hex.cy + 4,
     textAnchor: "middle",
     fontFamily: "'Fraunces', serif",
     fontSize: 14,
     fontWeight: 700,
-    fill: hex.number === 6 || hex.number === 8 ? "#b33a2e" : "#40301c"
+    fill: hot ? "#b33a2e" : "#40301c"
   }, hex.number), Array.from({
     length: dots
   }).map((_, i) => /*#__PURE__*/React.createElement("circle", {
     key: i,
     cx: dotStartX + i * dotSpacing,
-    cy: hex.cy + 11.5,
-    r: 1.1,
-    fill: hex.number === 6 || hex.number === 8 ? "#b33a2e" : "#8a6d3b"
-  }))), isRobber && /*#__PURE__*/React.createElement(RobberIcon, {
+    cy: hex.cy + 10,
+    r: 0.9,
+    fill: hot ? "#b33a2e" : "#8a6d3b"
+  }))), hex.number && cityName && /*#__PURE__*/React.createElement("g", null, /*#__PURE__*/React.createElement("rect", {
+    x: hex.cx - 21,
+    y: hex.cy - 16,
+    width: 42,
+    height: 32,
+    rx: 11,
+    fill: "rgba(0,0,0,0.28)",
+    transform: `translate(1.5, 2.5)`
+  }), /*#__PURE__*/React.createElement("rect", {
+    x: hex.cx - 21,
+    y: hex.cy - 16,
+    width: 42,
+    height: 32,
+    rx: 11,
+    fill: "url(#tokenFace)",
+    stroke: "#241c12",
+    strokeWidth: 1.2
+  }), /*#__PURE__*/React.createElement("line", {
+    x1: hex.cx - 15,
+    y1: hex.cy + 3,
+    x2: hex.cx + 15,
+    y2: hex.cy + 3,
+    stroke: "#241c12",
+    strokeWidth: 0.6,
+    opacity: 0.35
+  }), /*#__PURE__*/React.createElement("text", {
+    x: hex.cx,
+    y: hex.cy - 1,
+    textAnchor: "middle",
+    fontFamily: "'Fraunces', serif",
+    fontSize: 13,
+    fontWeight: 700,
+    fill: hot ? "#b33a2e" : "#40301c"
+  }, hex.number), Array.from({
+    length: dots
+  }).map((_, i) => /*#__PURE__*/React.createElement("circle", {
+    key: i,
+    cx: dotStartX + i * dotSpacing,
+    cy: hex.cy + 4.5,
+    r: 0.85,
+    fill: hot ? "#b33a2e" : "#8a6d3b"
+  })), /*#__PURE__*/React.createElement("text", {
+    x: hex.cx,
+    y: hex.cy + 12.5,
+    textAnchor: "middle",
+    fontSize: 6.4,
+    fontWeight: 700,
+    letterSpacing: 0.2,
+    fill: "#40301c"
+  }, cityName)), !hex.number && cityName && /*#__PURE__*/React.createElement("g", null, /*#__PURE__*/React.createElement("rect", {
+    x: hex.cx - 20,
+    y: hex.cy - 6,
+    width: 40,
+    height: 12,
+    rx: 6,
+    fill: "rgba(20,12,6,0.82)",
+    stroke: "#241c12",
+    strokeWidth: 1
+  }), /*#__PURE__*/React.createElement("text", {
+    x: hex.cx,
+    y: hex.cy + 3,
+    textAnchor: "middle",
+    fontSize: 7,
+    fontWeight: 700,
+    fill: "#f2e8d0"
+  }, cityName)), isRobber && /*#__PURE__*/React.createElement(RobberIcon, {
     cx: hex.cx,
     cy: hex.cy - (hex.number ? 24 : 0)
   }));
