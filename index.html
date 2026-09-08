@@ -100,6 +100,28 @@ const RES_COLOR = {
   wheat: "#d9a441",
   ore: "#5c6b74"
 };
+const DEFAULT_HEX_COLORS = {
+  wood: "#2f6f37",
+  brick: "#9c5a24",
+  sheep: "#82a93f",
+  wheat: "#c89f2c",
+  ore: "#6a7480",
+  desert: "#c9b072",
+  sea: "#0d4c63",
+  gold: "#c49a2e"
+};
+function shadeHex(hex, pct) {
+  if (!hex || hex.length < 7) return hex;
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  const t = pct < 0 ? 0 : 255;
+  const p = Math.abs(pct);
+  const nr = Math.round((t - r) * p + r);
+  const ng = Math.round((t - g) * p + g);
+  const nb = Math.round((t - b) * p + b);
+  return "#" + [nr, ng, nb].map(v => Math.max(0, Math.min(255, v)).toString(16).padStart(2, "0")).join("");
+}
 const RES_ICON = {
   wood: "🌲",
   brick: "🧱",
@@ -148,6 +170,8 @@ const THEMES = {
     glow: "#f2f278",
     panel: "rgba(28,14,6,0.85)",
     panel2: "rgba(48,22,10,0.9)",
+    menuBgA: "rgba(56,39,22,0.98)",
+    menuBgB: "rgba(38,26,15,0.99)",
     ok: "#5cb85c",
     bad: "#d9534f",
     blue: "#4a9fd8",
@@ -167,6 +191,8 @@ const THEMES = {
     glow: "#ffd580",
     panel: "rgba(15,25,42,0.85)",
     panel2: "rgba(28,42,64,0.9)",
+    menuBgA: "rgba(22,32,52,0.98)",
+    menuBgB: "rgba(10,18,30,0.99)",
     ok: "#5cb85c",
     bad: "#d9534f",
     blue: "#7bb8dc",
@@ -186,6 +212,8 @@ const THEMES = {
     glow: "#f78a4c",
     panel: "rgba(20,28,10,0.85)",
     panel2: "rgba(35,45,20,0.9)",
+    menuBgA: "rgba(28,38,18,0.98)",
+    menuBgB: "rgba(14,20,8,0.99)",
     ok: "#5cb85c",
     bad: "#d9534f",
     blue: "#9dc487",
@@ -205,6 +233,8 @@ const THEMES = {
     glow: "#d4a8ec",
     panel: "rgba(35,28,12,0.85)",
     panel2: "rgba(55,45,20,0.9)",
+    menuBgA: "rgba(50,40,20,0.98)",
+    menuBgB: "rgba(24,18,10,0.99)",
     ok: "#5cb85c",
     bad: "#d9534f",
     blue: "#8f7bb0",
@@ -224,6 +254,8 @@ const THEMES = {
     glow: "#a5f8b5",
     panel: "rgba(25,25,30,0.85)",
     panel2: "rgba(45,45,50,0.9)",
+    menuBgA: "rgba(35,35,42,0.98)",
+    menuBgB: "rgba(18,18,26,0.99)",
     ok: "#5cb85c",
     bad: "#d9534f",
     blue: "#a5b0c0",
@@ -302,11 +334,68 @@ function payCost(res, cost) {
 
 /* ============================== SOUND ================================ */
 
+const SOUND_EVENTS = [{
+  id: "dice",
+  label: "Dice rolled"
+}, {
+  id: "build",
+  label: "Piece placed (thud)"
+}, {
+  id: "accept",
+  label: "Trade accepted"
+}, {
+  id: "reject",
+  label: "Trade rejected"
+}, {
+  id: "offer",
+  label: "Trade offered"
+}, {
+  id: "turn",
+  label: "Turn changed"
+}, {
+  id: "steal",
+  label: "Resource stolen"
+}, {
+  id: "achievement",
+  label: "Achievement chime"
+}, {
+  id: "victory",
+  label: "Victory (roar)"
+}, {
+  id: "evilLaugh",
+  label: "Robber moved (evil laugh)"
+}, {
+  id: "sadThud",
+  label: "Discard on 7"
+}, {
+  id: "fanfare",
+  label: "Game start fanfare"
+}, {
+  id: "chatBlip",
+  label: "Chat message"
+}, {
+  id: "devCard",
+  label: "Dev card played"
+}, {
+  id: "deal",
+  label: "Resources dealt (whoosh)"
+}, {
+  id: "chant",
+  label: "Largest Army (chant)"
+}, {
+  id: "carPass",
+  label: "Longest Road (car pass)"
+}, {
+  id: "jokeTrade",
+  label: "Joke trade (sad trombone)"
+}];
 function createSFX() {
   let ctx = null;
   let master = null;
   let userVolume = 0.7;
   let muted = false;
+  const customSounds = {};
+  const installedDefaults = {};
   try {
     const storedVol = localStorage.getItem("landfall-sound-volume");
     if (storedVol !== null) {
@@ -314,8 +403,44 @@ function createSFX() {
       if (!isNaN(parsed)) userVolume = Math.max(0, Math.min(1, parsed));
     }
     muted = localStorage.getItem("landfall-sound-muted") === "true";
+    for (const evt of SOUND_EVENTS) {
+      const data = localStorage.getItem("landfall-sound-custom-" + evt.id);
+      if (data) customSounds[evt.id] = data;
+    }
   } catch (e) {
     /* no localStorage available */
+  }
+  // Detect installed defaults in /sounds/ folder (mp3 → wav fallback)
+  if (typeof fetch !== "undefined") {
+    for (const evt of SOUND_EVENTS) {
+      (function (id) {
+        const tryFormat = ext => fetch("sounds/" + id + "." + ext, {
+          method: "HEAD"
+        }).then(r => {
+          if (r.ok) {
+            installedDefaults[id] = "sounds/" + id + "." + ext;
+            return true;
+          }
+          return false;
+        }).catch(() => false);
+        tryFormat("mp3").then(ok => {
+          if (!ok) tryFormat("wav");
+        });
+      })(evt.id);
+    }
+  }
+  function playCustom(eventId) {
+    const source = customSounds[eventId] || installedDefaults[eventId];
+    if (!source) return false;
+    if (muted) return true;
+    try {
+      const a = new Audio(source);
+      a.volume = userVolume;
+      a.play().catch(() => {});
+    } catch (e) {
+      /* ignore */
+    }
+    return true;
   }
   function applyGain() {
     if (master) master.gain.value = muted ? 0 : userVolume;
@@ -414,7 +539,51 @@ function createSFX() {
     getMuted() {
       return muted;
     },
+    hasCustom(eventId) {
+      return !!customSounds[eventId];
+    },
+    hasInstalled(eventId) {
+      return !!installedDefaults[eventId];
+    },
+    setCustomSound(eventId, dataUri) {
+      if (!dataUri) {
+        delete customSounds[eventId];
+        try {
+          localStorage.removeItem("landfall-sound-custom-" + eventId);
+        } catch (e) {
+          /* no localStorage available */
+        }
+        return {
+          ok: true
+        };
+      }
+      try {
+        localStorage.setItem("landfall-sound-custom-" + eventId, dataUri);
+        customSounds[eventId] = dataUri;
+        return {
+          ok: true
+        };
+      } catch (e) {
+        return {
+          ok: false,
+          error: e.name === "QuotaExceededError" ? "quota" : "unknown"
+        };
+      }
+    },
+    preview(eventId) {
+      const data = customSounds[eventId];
+      if (!data) return false;
+      try {
+        const a = new Audio(data);
+        a.volume = userVolume;
+        a.play().catch(() => {});
+        return true;
+      } catch (e) {
+        return false;
+      }
+    },
     dice() {
+      if (playCustom("dice")) return;
       for (let i = 0; i < 5; i++) noise({
         dur: 0.04,
         vol: 0.16,
@@ -433,6 +602,7 @@ function createSFX() {
     },
     // Heavy thud when placing a piece
     build() {
+      if (playCustom("build")) return;
       tone({
         type: "sine",
         freq: 100,
@@ -457,6 +627,7 @@ function createSFX() {
       });
     },
     accept() {
+      if (playCustom("accept")) return;
       tone({
         type: "sine",
         freq: 660,
@@ -472,6 +643,7 @@ function createSFX() {
       });
     },
     reject() {
+      if (playCustom("reject")) return;
       tone({
         type: "square",
         freq: 220,
@@ -487,6 +659,7 @@ function createSFX() {
       });
     },
     offer() {
+      if (playCustom("offer")) return;
       tone({
         type: "triangle",
         freq: 740,
@@ -495,6 +668,7 @@ function createSFX() {
       });
     },
     turn() {
+      if (playCustom("turn")) return;
       tone({
         type: "sine",
         freq: 523,
@@ -511,6 +685,7 @@ function createSFX() {
     },
     // Steal victim — quick woosh + sting
     steal() {
+      if (playCustom("steal")) return;
       noise({
         dur: 0.18,
         vol: 0.2,
@@ -528,6 +703,7 @@ function createSFX() {
       });
     },
     achievement() {
+      if (playCustom("achievement")) return;
       [523, 659, 784, 1047].forEach((f, i) => tone({
         type: "triangle",
         freq: f,
@@ -538,6 +714,7 @@ function createSFX() {
     },
     // Victory — big roar-like growl followed by a fanfare
     victory() {
+      if (playCustom("victory")) return;
       // Roar: filtered noise growl with pitch sweep
       noise({
         dur: 0.8,
@@ -573,6 +750,7 @@ function createSFX() {
     },
     // Robber moved — descending "heh-heh-heh" cackle
     evilLaugh() {
+      if (playCustom("evilLaugh")) return;
       const pitches = [560, 470, 400, 330, 380, 310];
       pitches.forEach((p, i) => {
         tone({
@@ -602,6 +780,7 @@ function createSFX() {
     },
     // Sad hollow thud for discard-after-7
     sadThud() {
+      if (playCustom("sadThud")) return;
       tone({
         type: "sine",
         freq: 65,
@@ -628,6 +807,7 @@ function createSFX() {
     },
     // Game-start trumpet fanfare
     fanfare() {
+      if (playCustom("fanfare")) return;
       const notes = [{
         f: 392,
         d: 0.13
@@ -673,6 +853,7 @@ function createSFX() {
     },
     // Chat message received — subtle high pop
     chatBlip() {
+      if (playCustom("chatBlip")) return;
       tone({
         type: "sine",
         freq: 1200,
@@ -690,6 +871,7 @@ function createSFX() {
     },
     // Development card played — soft chime with a card-slide edge
     devCard() {
+      if (playCustom("devCard")) return;
       noise({
         dur: 0.08,
         vol: 0.16,
@@ -721,6 +903,7 @@ function createSFX() {
     },
     // Cards dealt — woosh
     deal() {
+      if (playCustom("deal")) return;
       noise({
         dur: 0.22,
         vol: 0.22,
@@ -739,6 +922,7 @@ function createSFX() {
     },
     // Largest army — crowd chant (rhythmic pulses)
     chant() {
+      if (playCustom("chant")) return;
       for (let i = 0; i < 4; i++) {
         const t0 = i * 0.22;
         // Voice-like tone burst
@@ -778,6 +962,7 @@ function createSFX() {
     },
     // Longest road — car whoosh (Doppler)
     carPass() {
+      if (playCustom("carPass")) return;
       // Approaching (rising)
       noise({
         dur: 0.4,
@@ -821,6 +1006,7 @@ function createSFX() {
     },
     // Joke trade (1:1 same resource) — classic sad trombone
     jokeTrade() {
+      if (playCustom("jokeTrade")) return;
       // Wah-wah-waaaaah
       tone({
         type: "sawtooth",
@@ -2643,6 +2829,20 @@ function Landfall() {
         } catch (e) {
           alert("Couldn't join that game.");
         }
+      },
+      onSpectate: async () => {
+        const joinCode = joinCodeDraft.trim().toUpperCase();
+        if (!joinCode) return;
+        try {
+          const g = await loadGame(joinCode);
+          if (!g) {
+            alert("No game found with that code.");
+            return;
+          }
+          setCode(joinCode);
+        } catch (e) {
+          alert("Couldn't find that game.");
+        }
       }
     });
   }
@@ -2714,7 +2914,11 @@ function Shell({
     "--panel2": t.panel2,
     "--ok": t.ok,
     "--bad": t.bad,
-    "--blue": t.blue
+    "--blue": t.blue,
+    "--bg1": t.bg1,
+    "--bg2": t.bg2,
+    "--menu-bg-a": t.menuBgA || t.panel,
+    "--menu-bg-b": t.menuBgB || t.panel2
   };
   return /*#__PURE__*/React.createElement("div", {
     className: "lf-root",
@@ -3150,6 +3354,7 @@ function Home({
   onCreate,
   onSolo,
   onJoin,
+  onSpectate,
   lastCode,
   onResume
 }) {
@@ -3422,6 +3627,9 @@ function Home({
     onClick: onJoin
   }, "Join game"), /*#__PURE__*/React.createElement(Btn, {
     variant: "ghost",
+    onClick: onSpectate
+  }, "👁 Spectate"), /*#__PURE__*/React.createElement(Btn, {
+    variant: "ghost",
     onClick: () => setMode("home")
   }, "Back")))));
 }
@@ -3632,15 +3840,6 @@ function GameView({
       isPlayer: isPlayer
     });
   }
-  if (!isPlayer) {
-    return /*#__PURE__*/React.createElement("div", {
-      style: {
-        padding: 24
-      }
-    }, /*#__PURE__*/React.createElement("p", null, "This game is full or already in progress — you're viewing as a spectator isn't supported yet."), /*#__PURE__*/React.createElement(Btn, {
-      onClick: onLeave
-    }, "Back"));
-  }
   return /*#__PURE__*/React.createElement(Board, {
     state: state,
     mutate: mutate,
@@ -3765,7 +3964,7 @@ function Lobby({
     style: {
       maxWidth: 460,
       width: "100%",
-      background: "linear-gradient(160deg, rgba(56,39,22,0.92), rgba(38,26,15,0.94))",
+      background: "linear-gradient(160deg, var(--menu-bg-a), var(--menu-bg-b))",
       border: "2px solid var(--rust)",
       borderRadius: 18,
       boxShadow: "0 18px 50px rgba(0,0,0,0.55), inset 0 1px 0 rgba(255,255,255,0.12)",
@@ -3909,9 +4108,13 @@ function Lobby({
   }, "Waiting for a player…"))), !isPlayer && /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 13,
-      color: "var(--bad)"
+      color: "var(--gold)",
+      background: "rgba(232,182,76,0.12)",
+      padding: 8,
+      borderRadius: 6,
+      border: "1px solid var(--gold)"
     }
-  }, "You're not in this game."), isHost && state.players.length < state.maxPlayers && /*#__PURE__*/React.createElement(Btn, {
+  }, "👁 You're spectating this lobby — the game will start when the host is ready."), isHost && state.players.length < state.maxPlayers && /*#__PURE__*/React.createElement(Btn, {
     variant: "ghost",
     small: true,
     onClick: () => mutate(s => {
@@ -4062,8 +4265,9 @@ function Board({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.lastGains]);
   const me = state.players.find(p => p.id === clientId);
+  const isSpectator = !me;
   const currentPlayerId = state.phase === "setup" ? state.turnOrder[state.currentIndex] : state.turnOrder[state.currentIndex];
-  const isMyTurn = currentPlayerId === clientId;
+  const isMyTurn = !isSpectator && currentPlayerId === clientId;
   const board = state.board;
   const cityByHex = useMemo(() => {
     const map = {};
@@ -4278,7 +4482,7 @@ function Board({
   })), /*#__PURE__*/React.createElement("div", {
     className: "lf-area-board",
     style: {
-      background: "radial-gradient(ellipse at center, #6b3512 0%, #3a1a08 55%, #200e04 100%)"
+      background: "radial-gradient(ellipse at center, var(--rust-dark) 0%, var(--bg2) 90%)"
     }
   }, /*#__PURE__*/React.createElement(ToastStack, {
     toasts: toasts
@@ -4324,95 +4528,22 @@ function Board({
       width: `${100 * zoom}%`,
       height: "auto"
     }
-  }, /*#__PURE__*/React.createElement("defs", null, /*#__PURE__*/React.createElement("radialGradient", {
-    id: "hexfill-wood",
-    cx: "35%",
-    cy: "30%",
-    r: "75%"
-  }, /*#__PURE__*/React.createElement("stop", {
-    offset: "0%",
-    stopColor: "#4a9c50"
-  }), /*#__PURE__*/React.createElement("stop", {
-    offset: "100%",
-    stopColor: "#2f6f37"
-  })), /*#__PURE__*/React.createElement("radialGradient", {
-    id: "hexfill-brick",
-    cx: "35%",
-    cy: "30%",
-    r: "75%"
-  }, /*#__PURE__*/React.createElement("stop", {
-    offset: "0%",
-    stopColor: "#c97b3a"
-  }), /*#__PURE__*/React.createElement("stop", {
-    offset: "100%",
-    stopColor: "#9c5a24"
-  })), /*#__PURE__*/React.createElement("radialGradient", {
-    id: "hexfill-sheep",
-    cx: "35%",
-    cy: "30%",
-    r: "75%"
-  }, /*#__PURE__*/React.createElement("stop", {
-    offset: "0%",
-    stopColor: "#a9cf5a"
-  }), /*#__PURE__*/React.createElement("stop", {
-    offset: "100%",
-    stopColor: "#82a93f"
-  })), /*#__PURE__*/React.createElement("radialGradient", {
-    id: "hexfill-wheat",
-    cx: "35%",
-    cy: "30%",
-    r: "75%"
-  }, /*#__PURE__*/React.createElement("stop", {
-    offset: "0%",
-    stopColor: "#eec64f"
-  }), /*#__PURE__*/React.createElement("stop", {
-    offset: "100%",
-    stopColor: "#c89f2c"
-  })), /*#__PURE__*/React.createElement("radialGradient", {
-    id: "hexfill-ore",
-    cx: "35%",
-    cy: "30%",
-    r: "75%"
-  }, /*#__PURE__*/React.createElement("stop", {
-    offset: "0%",
-    stopColor: "#8f9aa8"
-  }), /*#__PURE__*/React.createElement("stop", {
-    offset: "100%",
-    stopColor: "#6a7480"
-  })), /*#__PURE__*/React.createElement("radialGradient", {
-    id: "hexfill-desert",
-    cx: "35%",
-    cy: "30%",
-    r: "75%"
-  }, /*#__PURE__*/React.createElement("stop", {
-    offset: "0%",
-    stopColor: "#ecd9a6"
-  }), /*#__PURE__*/React.createElement("stop", {
-    offset: "100%",
-    stopColor: "#c9b072"
-  })), /*#__PURE__*/React.createElement("radialGradient", {
-    id: "hexfill-sea",
-    cx: "35%",
-    cy: "30%",
-    r: "75%"
-  }, /*#__PURE__*/React.createElement("stop", {
-    offset: "0%",
-    stopColor: "#17718f"
-  }), /*#__PURE__*/React.createElement("stop", {
-    offset: "100%",
-    stopColor: "#0d4c63"
-  })), /*#__PURE__*/React.createElement("radialGradient", {
-    id: "hexfill-gold",
-    cx: "35%",
-    cy: "30%",
-    r: "75%"
-  }, /*#__PURE__*/React.createElement("stop", {
-    offset: "0%",
-    stopColor: "#e6c35c"
-  }), /*#__PURE__*/React.createElement("stop", {
-    offset: "100%",
-    stopColor: "#c49a2e"
-  })), /*#__PURE__*/React.createElement("radialGradient", {
+  }, /*#__PURE__*/React.createElement("defs", null, ["wood", "brick", "sheep", "wheat", "ore", "desert", "sea", "gold"].map(r => {
+    const base = customTheme && customTheme.hexColors && customTheme.hexColors[r] || DEFAULT_HEX_COLORS[r];
+    return /*#__PURE__*/React.createElement("radialGradient", {
+      key: r,
+      id: `hexfill-${r}`,
+      cx: "35%",
+      cy: "30%",
+      r: "75%"
+    }, /*#__PURE__*/React.createElement("stop", {
+      offset: "0%",
+      stopColor: shadeHex(base, 0.28)
+    }), /*#__PURE__*/React.createElement("stop", {
+      offset: "100%",
+      stopColor: base
+    }));
+  }), /*#__PURE__*/React.createElement("radialGradient", {
     id: "tokenFace",
     cx: "35%",
     cy: "30%",
@@ -4675,7 +4806,9 @@ function Board({
     }));
   })))), /*#__PURE__*/React.createElement("div", {
     className: "lf-area-sidebar"
-  }, /*#__PURE__*/React.createElement(SidePanel, {
+  }, isSpectator ? /*#__PURE__*/React.createElement(SpectatorSidePanel, {
+    state: state
+  }) : /*#__PURE__*/React.createElement(SidePanel, {
     state: state,
     clientId: clientId,
     me: me,
@@ -5600,7 +5733,7 @@ function TopBar({
       top: "110%",
       right: 0,
       zIndex: 60,
-      background: "linear-gradient(160deg, rgba(56,39,22,0.98), rgba(38,26,15,0.99))",
+      background: "linear-gradient(160deg, var(--menu-bg-a), var(--menu-bg-b))",
       border: "2px solid var(--rust)",
       borderRadius: 12,
       boxShadow: "0 12px 32px rgba(0,0,0,0.5)",
@@ -5858,7 +5991,7 @@ function DevPanel({
   };
   const [draft, setDraft] = useState(startingValues);
   const [dirty, setDirty] = useState(false);
-  // Live-apply: whenever draft changes, save it and switch theme to "custom"
+  const [activeTab, setActiveTab] = useState("theme");
   useEffect(() => {
     if (!dirty) return;
     saveCustomTheme(draft);
@@ -5869,6 +6002,26 @@ function DevPanel({
       ...d,
       [key]: value
     }));
+    setDirty(true);
+  }
+  function updateHexColor(resource, value) {
+    setDraft(d => ({
+      ...d,
+      hexColors: {
+        ...(d.hexColors || {}),
+        [resource]: value
+      }
+    }));
+    setDirty(true);
+  }
+  function resetHexColors() {
+    setDraft(d => {
+      const copy = {
+        ...d
+      };
+      delete copy.hexColors;
+      return copy;
+    });
     setDirty(true);
   }
   function loadFromTheme(themeKey) {
@@ -5887,6 +6040,125 @@ function DevPanel({
     saveCustomTheme(null);
     setTheme("sheercon");
   }
+  const tabs = [{
+    id: "theme",
+    label: "Theme"
+  }, {
+    id: "sounds",
+    label: "Sounds"
+  }, {
+    id: "music",
+    label: "Music"
+  }];
+  return /*#__PURE__*/React.createElement("div", {
+    onClick: onClose,
+    style: {
+      position: "fixed",
+      inset: 0,
+      background: "rgba(0,0,0,0.6)",
+      zIndex: 200,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      padding: 20
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    onClick: e => e.stopPropagation(),
+    style: {
+      background: "linear-gradient(160deg, var(--menu-bg-a), var(--menu-bg-b))",
+      border: "2px solid var(--rust)",
+      borderRadius: 14,
+      padding: 18,
+      maxWidth: 520,
+      width: "100%",
+      maxHeight: "88vh",
+      overflowY: "auto",
+      color: "#f7edd3",
+      boxShadow: "0 18px 50px rgba(0,0,0,0.55)"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      marginBottom: 10
+    }
+  }, /*#__PURE__*/React.createElement("h3", {
+    style: {
+      margin: 0,
+      color: "var(--gold)"
+    }
+  }, "⚡ Dev tools"), /*#__PURE__*/React.createElement("button", {
+    onClick: onClose,
+    style: {
+      background: "none",
+      border: "none",
+      color: "#f7edd3",
+      fontSize: 22,
+      cursor: "pointer",
+      padding: 0
+    }
+  }, "×")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 4,
+      borderBottom: "1px solid rgba(255,255,255,0.14)",
+      marginBottom: 14
+    }
+  }, tabs.map(tab => /*#__PURE__*/React.createElement("button", {
+    key: tab.id,
+    onClick: () => setActiveTab(tab.id),
+    style: {
+      padding: "6px 14px",
+      fontSize: 12,
+      fontWeight: activeTab === tab.id ? 700 : 500,
+      background: "none",
+      border: "none",
+      borderBottom: activeTab === tab.id ? "2px solid var(--gold)" : "2px solid transparent",
+      color: activeTab === tab.id ? "var(--gold)" : "#a89a7e",
+      cursor: "pointer",
+      marginBottom: -1
+    }
+  }, tab.label))), activeTab === "theme" && /*#__PURE__*/React.createElement(DevTabTheme, {
+    draft: draft,
+    updateField: updateField,
+    updateHexColor: updateHexColor,
+    resetHexColors: resetHexColors,
+    loadFromTheme: loadFromTheme
+  }), activeTab === "sounds" && /*#__PURE__*/React.createElement(DevTabSounds, null), activeTab === "music" && /*#__PURE__*/React.createElement(DevTabMusic, null), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      flexWrap: "wrap",
+      marginTop: 16,
+      paddingTop: 12,
+      borderTop: "1px solid rgba(255,255,255,0.14)"
+    }
+  }, activeTab === "theme" && /*#__PURE__*/React.createElement(Btn, {
+    small: true,
+    onClick: reset
+  }, "Reset theme to Sheer Con"), /*#__PURE__*/React.createElement(Btn, {
+    small: true,
+    variant: "ghost",
+    onClick: () => {
+      toggleDevMode(false);
+      onClose();
+    }
+  }, "Disable dev mode")), /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 10,
+      color: "#7d7156",
+      margin: "12px 0 0"
+    }
+  }, "Tip: click SHEER CON 5 times to toggle dev mode again later.")));
+}
+function DevTabTheme({
+  draft,
+  updateField,
+  updateHexColor,
+  resetHexColors,
+  loadFromTheme
+}) {
   const fields = [{
     key: "rust",
     label: "Primary (rust)",
@@ -5936,61 +6208,13 @@ function DevPanel({
     label: "Panel alt (rgba)",
     type: "text"
   }];
-  return /*#__PURE__*/React.createElement("div", {
-    onClick: onClose,
-    style: {
-      position: "fixed",
-      inset: 0,
-      background: "rgba(0,0,0,0.6)",
-      zIndex: 200,
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      padding: 20
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    onClick: e => e.stopPropagation(),
-    style: {
-      background: "linear-gradient(160deg, rgba(56,39,22,0.98), rgba(38,26,15,0.99))",
-      border: "2px solid var(--rust)",
-      borderRadius: 14,
-      padding: 18,
-      maxWidth: 480,
-      width: "100%",
-      maxHeight: "88vh",
-      overflowY: "auto",
-      color: "#f7edd3",
-      boxShadow: "0 18px 50px rgba(0,0,0,0.55)"
-    }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      justifyContent: "space-between",
-      alignItems: "center",
-      marginBottom: 10
-    }
-  }, /*#__PURE__*/React.createElement("h3", {
-    style: {
-      margin: 0,
-      color: "var(--gold)"
-    }
-  }, "⚡ Dev tools"), /*#__PURE__*/React.createElement("button", {
-    onClick: onClose,
-    style: {
-      background: "none",
-      border: "none",
-      color: "#f7edd3",
-      fontSize: 22,
-      cursor: "pointer",
-      padding: 0
-    }
-  }, "×")), /*#__PURE__*/React.createElement("p", {
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
     style: {
       fontSize: 12,
       color: "#a89a7e",
       margin: "0 0 12px"
     }
-  }, "Any change becomes your \"Custom\" theme instantly. Reset to start over."), /*#__PURE__*/React.createElement("div", {
+  }, "Any change becomes your \"Custom\" theme instantly."), /*#__PURE__*/React.createElement("div", {
     style: {
       marginBottom: 12
     }
@@ -6077,29 +6301,351 @@ function DevPanel({
       borderRadius: 4,
       fontFamily: "monospace"
     }
-  })))), /*#__PURE__*/React.createElement("div", {
+  })))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#a89a7e",
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+      marginBottom: 6
+    }
+  }, "Hex tile colors"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: 8
+    }
+  }, ["wood", "brick", "sheep", "wheat", "ore", "desert", "sea", "gold"].map(r => {
+    const current = draft.hexColors && draft.hexColors[r] || DEFAULT_HEX_COLORS[r];
+    return /*#__PURE__*/React.createElement("label", {
+      key: r,
+      style: {
+        display: "flex",
+        flexDirection: "column",
+        gap: 3,
+        fontSize: 11,
+        color: "#d9cba4"
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        textTransform: "capitalize"
+      }
+    }, r), /*#__PURE__*/React.createElement("div", {
+      style: {
+        display: "flex",
+        gap: 4,
+        alignItems: "center"
+      }
+    }, /*#__PURE__*/React.createElement("input", {
+      type: "color",
+      value: current,
+      onChange: e => updateHexColor(r, e.target.value),
+      style: {
+        width: 34,
+        height: 26,
+        border: "1px solid rgba(255,255,255,0.2)",
+        borderRadius: 4,
+        padding: 0,
+        background: "none",
+        cursor: "pointer"
+      }
+    }), /*#__PURE__*/React.createElement("input", {
+      type: "text",
+      value: current,
+      onChange: e => updateHexColor(r, e.target.value),
+      style: {
+        flex: 1,
+        minWidth: 0,
+        padding: "4px 6px",
+        fontSize: 11,
+        borderRadius: 4,
+        fontFamily: "monospace"
+      }
+    })));
+  })), /*#__PURE__*/React.createElement("button", {
+    onClick: resetHexColors,
+    style: {
+      marginTop: 8,
+      padding: "3px 10px",
+      fontSize: 11,
+      borderRadius: 6,
+      background: "rgba(0,0,0,0.28)",
+      border: "1px solid rgba(255,255,255,0.16)",
+      color: "#d9cba4",
+      cursor: "pointer"
+    }
+  }, "Reset hex colors to default")));
+}
+function DevTabSounds() {
+  const [tick, setTick] = useState(0);
+  const [errorMsg, setErrorMsg] = useState(null);
+  const fileInputRefs = useRef({});
+  function refresh() {
+    setTick(n => n + 1);
+  }
+  function handleUpload(eventId, file) {
+    setErrorMsg(null);
+    if (!file) return;
+    if (!file.type.startsWith("audio/") && !file.name.match(/\.(mp3|wav|ogg|m4a)$/i)) {
+      setErrorMsg("Please upload an audio file (mp3, wav, ogg, m4a).");
+      return;
+    }
+    if (file.size > 500 * 1024) {
+      setErrorMsg(`"${file.name}" is ${(file.size / 1024).toFixed(0)}KB. Keep files under 500KB — localStorage is limited.`);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUri = reader.result;
+      const result = sfx.setCustomSound(eventId, dataUri);
+      if (!result.ok) {
+        setErrorMsg(result.error === "quota" ? "Storage is full — remove some other custom sounds first." : "Couldn't save that sound.");
+      } else {
+        refresh();
+      }
+    };
+    reader.onerror = () => setErrorMsg("Couldn't read that file.");
+    reader.readAsDataURL(file);
+  }
+  function removeSound(eventId) {
+    sfx.setCustomSound(eventId, null);
+    if (fileInputRefs.current[eventId]) fileInputRefs.current[eventId].value = "";
+    refresh();
+  }
+  function playSynth(eventId) {
+    // Temporarily bypass custom to hear synth
+    const had = sfx.hasCustom(eventId);
+    if (had) {
+      const saved = localStorage.getItem("landfall-sound-custom-" + eventId);
+      sfx.setCustomSound(eventId, null);
+      if (typeof sfx[eventId] === "function") sfx[eventId]();
+      if (saved) sfx.setCustomSound(eventId, saved);
+    } else if (typeof sfx[eventId] === "function") {
+      sfx[eventId]();
+    }
+  }
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 12,
+      color: "#a89a7e",
+      margin: "0 0 10px"
+    }
+  }, "Two ways to replace sounds: drop mp3 files in ", /*#__PURE__*/React.createElement("code", {
+    style: {
+      background: "rgba(0,0,0,0.28)",
+      padding: "1px 5px",
+      borderRadius: 3
+    }
+  }, "/sounds/"), " in your GitHub repo (becomes the default for everyone), or upload here (personal, only on this device). Uploads override installed defaults."), errorMsg && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "rgba(217,83,79,0.18)",
+      border: "1px solid var(--bad)",
+      borderRadius: 6,
+      padding: 8,
+      fontSize: 12,
+      color: "#f5c9c7",
+      marginBottom: 10
+    }
+  }, errorMsg), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
+      flexDirection: "column",
+      gap: 6
+    }
+  }, SOUND_EVENTS.map(evt => {
+    const hasCustom = sfx.hasCustom(evt.id);
+    const hasInstalled = sfx.hasInstalled(evt.id);
+    void tick; // subscribe to refresh
+    const sourceLabel = hasCustom ? "✓ Personal upload" : hasInstalled ? "✓ Installed from /sounds/" : "Using synthesized default";
+    const sourceColor = hasCustom || hasInstalled ? "var(--gold)" : "#7d7156";
+    return /*#__PURE__*/React.createElement("div", {
+      key: evt.id,
+      style: {
+        display: "flex",
+        alignItems: "center",
+        gap: 6,
+        padding: 6,
+        background: hasCustom ? "rgba(232,182,76,0.1)" : "rgba(0,0,0,0.2)",
+        border: hasCustom ? "1px solid rgba(232,182,76,0.4)" : "1px solid rgba(255,255,255,0.08)",
+        borderRadius: 6
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        flex: 1,
+        minWidth: 0
+      }
+    }, /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 12,
+        fontWeight: 600,
+        color: "#f7edd3"
+      }
+    }, evt.label), /*#__PURE__*/React.createElement("div", {
+      style: {
+        fontSize: 10,
+        color: sourceColor
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: {
+        fontFamily: "monospace",
+        color: "#7d7156"
+      }
+    }, evt.id, ".mp3"), " · ", sourceLabel)), /*#__PURE__*/React.createElement("button", {
+      onClick: () => hasCustom ? sfx.preview(evt.id) : sfx[evt.id] && sfx[evt.id](),
+      title: "Preview",
+      style: {
+        padding: "3px 8px",
+        fontSize: 12,
+        borderRadius: 4,
+        background: "rgba(0,0,0,0.35)",
+        border: "1px solid rgba(255,255,255,0.16)",
+        color: "#f7edd3",
+        cursor: "pointer"
+      }
+    }, "▶"), hasCustom && /*#__PURE__*/React.createElement("button", {
+      onClick: () => playSynth(evt.id),
+      title: "Preview default synth",
+      style: {
+        padding: "3px 8px",
+        fontSize: 10,
+        borderRadius: 4,
+        background: "rgba(0,0,0,0.35)",
+        border: "1px solid rgba(255,255,255,0.16)",
+        color: "#a89a7e",
+        cursor: "pointer"
+      }
+    }, "synth"), /*#__PURE__*/React.createElement("label", {
+      style: {
+        padding: "3px 8px",
+        fontSize: 11,
+        borderRadius: 4,
+        background: "var(--rust)",
+        border: "1px solid var(--rust-dark)",
+        color: "#f7edd3",
+        cursor: "pointer"
+      },
+      title: "Upload custom sound"
+    }, "Upload", /*#__PURE__*/React.createElement("input", {
+      ref: el => fileInputRefs.current[evt.id] = el,
+      type: "file",
+      accept: "audio/*,.mp3,.wav,.ogg,.m4a",
+      onChange: e => handleUpload(evt.id, e.target.files && e.target.files[0]),
+      style: {
+        display: "none"
+      }
+    })), hasCustom && /*#__PURE__*/React.createElement("button", {
+      onClick: () => removeSound(evt.id),
+      title: "Remove custom",
+      style: {
+        padding: "3px 8px",
+        fontSize: 11,
+        borderRadius: 4,
+        background: "rgba(217,83,79,0.28)",
+        border: "1px solid var(--bad)",
+        color: "#f5c9c7",
+        cursor: "pointer"
+      }
+    }, "×"));
+  })));
+}
+function DevTabMusic() {
+  const [musicState, setMusicState] = useState(() => music.getState());
+  useEffect(() => music.subscribe(setMusicState), []);
+  return /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("p", {
+    style: {
+      fontSize: 12,
+      color: "#a89a7e",
+      margin: "0 0 12px"
+    }
+  }, "Background music streams from soma.fm. Music only plays when you press ▶ (browser autoplay policy)."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
       gap: 8,
-      flexWrap: "wrap"
+      marginBottom: 14
     }
-  }, /*#__PURE__*/React.createElement(Btn, {
-    small: true,
-    onClick: reset
-  }, "Reset to Sheer Con"), /*#__PURE__*/React.createElement(Btn, {
-    small: true,
-    variant: "ghost",
-    onClick: () => {
-      toggleDevMode(false);
-      onClose();
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => musicState.playing ? music.pause() : music.play(),
+    style: {
+      padding: "6px 14px",
+      fontSize: 14,
+      borderRadius: 6,
+      background: "var(--rust)",
+      border: "1px solid var(--rust-dark)",
+      color: "#f7edd3",
+      cursor: "pointer",
+      fontWeight: 700
     }
-  }, "Disable dev mode")), /*#__PURE__*/React.createElement("p", {
+  }, musicState.playing ? "⏸ Pause" : "▶ Play"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => music.setMuted(!musicState.muted),
+    style: {
+      padding: "6px 12px",
+      fontSize: 14,
+      borderRadius: 6,
+      background: "rgba(0,0,0,0.28)",
+      border: "1px solid rgba(255,255,255,0.18)",
+      color: "#f7edd3",
+      cursor: "pointer"
+    }
+  }, musicState.muted || musicState.volume === 0 ? "🔇" : musicState.volume < 0.5 ? "🔉" : "🔊"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: "0",
+    max: "100",
+    value: musicState.muted ? 0 : Math.round(musicState.volume * 100),
+    onChange: e => {
+      const v = Number(e.target.value);
+      music.setVolume(v / 100);
+      if (v > 0 && musicState.muted) music.setMuted(false);
+    },
+    style: {
+      flex: 1,
+      accentColor: "var(--gold)"
+    }
+  })), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#a89a7e",
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+      marginBottom: 6
+    }
+  }, "Station"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 4
+    }
+  }, Object.entries(MUSIC_STATIONS).map(([id, s]) => /*#__PURE__*/React.createElement("button", {
+    key: id,
+    onClick: () => music.setStation(id),
+    style: {
+      display: "flex",
+      justifyContent: "space-between",
+      alignItems: "center",
+      padding: "8px 10px",
+      fontSize: 12,
+      borderRadius: 6,
+      background: musicState.station === id ? "rgba(232,182,76,0.15)" : "rgba(0,0,0,0.24)",
+      border: musicState.station === id ? "1.5px solid var(--gold)" : "1px solid rgba(255,255,255,0.14)",
+      color: "#f7edd3",
+      cursor: "pointer",
+      textAlign: "left"
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontWeight: 700
+    }
+  }, s.name), /*#__PURE__*/React.createElement("div", {
     style: {
       fontSize: 10,
-      color: "#7d7156",
-      margin: "12px 0 0"
+      color: "#a89a7e"
     }
-  }, "Tip: click SHEER CON 5 times to toggle dev mode again later.")));
+  }, s.desc)), musicState.station === id && /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: "var(--gold)",
+      fontSize: 14
+    }
+  }, "●")))));
 }
 function PlayerPointsBar({
   state,
@@ -6156,6 +6702,163 @@ function PlayerPointsBar({
       color: "var(--gold)"
     }
   }, "★", computeVictoryPoints(state, p)))));
+}
+function SpectatorSidePanel({
+  state
+}) {
+  const currentId = state.turnOrder ? state.turnOrder[state.currentIndex] : null;
+  const currentPlayer = state.players.find(p => p.id === currentId);
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      padding: 12,
+      display: "flex",
+      flexDirection: "column",
+      gap: 12,
+      height: "100%",
+      overflowY: "auto"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "rgba(232,182,76,0.15)",
+      border: "1.5px solid var(--gold)",
+      borderRadius: 8,
+      padding: 10
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      color: "var(--gold)",
+      textTransform: "uppercase",
+      letterSpacing: 1,
+      marginBottom: 4
+    }
+  }, "👁 Spectating"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: "#f7edd3"
+    }
+  }, "You're watching this game — you can see everything but can't play.")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h4", {
+    style: {
+      color: "var(--gold)",
+      margin: "0 0 6px",
+      fontSize: 13
+    }
+  }, "Now playing"), currentPlayer ? /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      background: "rgba(0,0,0,0.28)",
+      padding: 8,
+      borderRadius: 8
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      width: 20,
+      height: 20,
+      borderRadius: "50%",
+      background: currentPlayer.color,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontSize: 12
+    }
+  }, currentPlayer.icon), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 13,
+      fontWeight: 700,
+      color: "#f7edd3"
+    }
+  }, currentPlayer.name)) : /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: "#a89a7e"
+    }
+  }, "Waiting…")), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("h4", {
+    style: {
+      color: "var(--gold)",
+      margin: "0 0 6px",
+      fontSize: 13
+    }
+  }, "Players"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 4
+    }
+  }, state.players.map(p => /*#__PURE__*/React.createElement("div", {
+    key: p.id,
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      background: "rgba(0,0,0,0.22)",
+      padding: "6px 8px",
+      borderRadius: 6
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
+      minWidth: 0
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      width: 16,
+      height: 16,
+      borderRadius: "50%",
+      background: p.color,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontSize: 10
+    }
+  }, p.icon), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 12,
+      color: "#f7edd3",
+      overflow: "hidden",
+      textOverflow: "ellipsis",
+      whiteSpace: "nowrap"
+    }
+  }, p.name)), /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 12,
+      fontWeight: 700,
+      color: "var(--gold)"
+    }
+  }, "★", computeVictoryPoints(state, p)))))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      minHeight: 0,
+      display: "flex",
+      flexDirection: "column"
+    }
+  }, /*#__PURE__*/React.createElement("h4", {
+    style: {
+      color: "var(--gold)",
+      margin: "0 0 6px",
+      fontSize: 13
+    }
+  }, "Game log"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      minHeight: 0,
+      background: "rgba(0,0,0,0.24)",
+      border: "1px solid rgba(255,255,255,0.08)",
+      borderRadius: 6,
+      padding: 6,
+      overflowY: "auto"
+    }
+  }, (state.log || []).slice(-40).reverse().map((entry, i) => /*#__PURE__*/React.createElement("div", {
+    key: i,
+    style: {
+      fontSize: 11,
+      color: "#d9cba4",
+      marginBottom: 2
+    }
+  }, entry.msg)))));
 }
 function SidePanel({
   state,
@@ -6528,7 +7231,7 @@ function ModalWrap({
   }, /*#__PURE__*/React.createElement("div", {
     style: {
       position: "relative",
-      background: "linear-gradient(160deg, rgba(56,39,22,0.97), rgba(38,26,15,0.98))",
+      background: "linear-gradient(160deg, var(--menu-bg-a), var(--menu-bg-b))",
       border: "2px solid var(--rust)",
       borderRadius: 16,
       boxShadow: "0 18px 50px rgba(0,0,0,0.55)",
