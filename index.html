@@ -271,7 +271,8 @@ const DEFAULT_OPTIONS = {
   turnTimerSec: 0,
   seafarers: true,
   allowUndo: false,
-  megalopolis: false
+  megalopolis: false,
+  communistCuba: false
 };
 const BANK_START = 19;
 function buildDevDeck(options) {
@@ -2038,6 +2039,129 @@ const MAPS = {
         r: 12
       }]
     })
+  },
+  cuba: {
+    name: "Cuban B",
+    desc: "The long thin island — pair with Communist Cuba mode for the full experience.",
+    minP: 3,
+    maxP: 6,
+    build: () => ({
+      // Cuba stretches west-to-east: a narrow strip of coastal islets, a wide main body, and a scattered south coast including Isla de la Juventud
+      coords: [
+      // Northern coastal cays (Jardines del Rey area)
+      {
+        q: -2,
+        r: -1
+      }, {
+        q: 0,
+        r: -1
+      }, {
+        q: 2,
+        r: -1
+      }, {
+        q: 4,
+        r: -1
+      },
+      // Main island body (r=0), 12 hexes west-to-east
+      ...Array.from({
+        length: 12
+      }, (_, i) => ({
+        q: -6 + i,
+        r: 0
+      })),
+      // Secondary body (r=1) — some interior/southern land
+      {
+        q: -6,
+        r: 1
+      }, {
+        q: -5,
+        r: 1
+      }, {
+        q: -4,
+        r: 1
+      }, {
+        q: -2,
+        r: 1
+      }, {
+        q: -1,
+        r: 1
+      }, {
+        q: 1,
+        r: 1
+      }, {
+        q: 2,
+        r: 1
+      }, {
+        q: 3,
+        r: 1
+      }, {
+        q: 4,
+        r: 1
+      },
+      // Isla de la Juventud (small satellite island south-west)
+      {
+        q: -6,
+        r: 2
+      }, {
+        q: -5,
+        r: 2
+      }],
+      size: 34,
+      desertCount: 1,
+      cities: [{
+        name: "Pinar del Río",
+        q: -6,
+        r: 1
+      }, {
+        name: "Havana",
+        q: -5,
+        r: 0
+      }, {
+        name: "Matanzas",
+        q: -3,
+        r: 0
+      }, {
+        name: "Cienfuegos",
+        q: -2,
+        r: 1
+      }, {
+        name: "Santa Clara",
+        q: -1,
+        r: 0
+      }, {
+        name: "Sancti Spíritus",
+        q: 0,
+        r: 1
+      }, {
+        name: "Camagüey",
+        q: 2,
+        r: 0
+      }, {
+        name: "Las Tunas",
+        q: 3,
+        r: 1
+      }, {
+        name: "Holguín",
+        q: 4,
+        r: 0
+      }, {
+        name: "Bayamo",
+        q: 3,
+        r: 1
+      }, {
+        name: "Santiago de Cuba",
+        q: 5,
+        r: 0
+      }, {
+        name: "Guantánamo",
+        q: 4,
+        r: 1
+      }, {
+        name: "Nueva Gerona",
+        q: -6,
+        r: 2
+      }]
+    })
   }
 };
 function hexCenter(q, r, size) {
@@ -2387,8 +2511,6 @@ function computeVictoryPoints(state, player) {
 /* ============================== STORAGE HOOK ============================= */
 
 const POLL_MS = 2500;
-
-/* Firebase Realtime Database, wired up via window.__fb in index.html's compat-SDK script block. */
 async function saveGame(code, obj) {
   const {
     db,
@@ -2429,7 +2551,7 @@ function useGame(code) {
     try {
       unsub = fbSubscribeGame(code, val => setState(val));
     } catch (e) {
-      setError("couldn't connect to Firebase — check your config in index.html");
+      setError("couldn't connect to Firebase");
     }
     return () => {
       if (unsub) unsub();
@@ -2440,9 +2562,7 @@ function useGame(code) {
       let current = null;
       try {
         current = await loadGame(code);
-      } catch (e) {
-        /* fall back to local state */
-      }
+      } catch (e) {}
       if (!current) current = state;
       const next = updater(structuredCloneSafe(current));
       if (!next) return;
@@ -2467,16 +2587,12 @@ function useClientId() {
     let id = null;
     try {
       id = localStorage.getItem("landfall-client-id");
-    } catch (e) {
-      /* no localStorage available */
-    }
+    } catch (e) {}
     if (!id) {
       id = "p_" + uid(10);
       try {
         localStorage.setItem("landfall-client-id", id);
-      } catch (e) {
-        /* memory-only fallback */
-      }
+      } catch (e) {}
     }
     setClientId(id);
   }, []);
@@ -2522,7 +2638,9 @@ function makePlayer(id, name, color, isBot, icon, botStyle) {
     roadsLeft: 15,
     settlementsLeft: 5,
     citiesLeft: 4,
-    shipsLeft: 15
+    shipsLeft: 15,
+    consecutiveEmptyTax: 0,
+    stateFrozen: false
   };
 }
 function createNewGame(hostId, hostName, maxPlayers, mapId = "standard", options = {}, hostColor = null, hostIcon = null, mapOpts = {}) {
@@ -2563,6 +2681,7 @@ function createNewGame(hostId, hostName, maxPlayers, mapId = "standard", options
     turnOrder: [],
     currentIndex: 0,
     turnCounter: 0,
+    turnsCompleted: 0,
     turnPhase: "roll",
     setupRound: 1,
     setupForward: true,
@@ -3321,7 +3440,35 @@ function OptionsPicker({
     onChange: v => set({
       megalopolis: v
     })
-  }));
+  }), /*#__PURE__*/React.createElement(OptionRow, {
+    label: "Communist Cuba mode",
+    value: optionsDraft.communistCuba ?? false,
+    options: [{
+      value: false,
+      label: "Off"
+    }, {
+      value: true,
+      label: "On — the State collects, redistributes, and taxes"
+    }],
+    onChange: v => set({
+      communistCuba: v
+    })
+  }), optionsDraft.communistCuba && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#a89a7e",
+      padding: "4px 8px",
+      background: "rgba(232,182,76,0.08)",
+      borderLeft: "3px solid var(--gold)",
+      borderRadius: 4
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontWeight: 700,
+      color: "var(--gold)",
+      marginBottom: 3
+    }
+  }, "How the State works"), /*#__PURE__*/React.createElement("div", null, "• On a 7, discards go into a State pool and are redistributed evenly to all players (remainder returns to the bank). The Traitor still steals — a snitch's cut."), /*#__PURE__*/React.createElement("div", null, "• Every 4 rounds, the State collects half of every player's cards (rounded down) and redistributes."), /*#__PURE__*/React.createElement("div", null, "• If you have nothing to give on 2 consecutive tax cycles, all your production freezes until you pay 3 cards to the State.")));
 }
 function Home({
   mode,
@@ -6894,7 +7041,33 @@ function SidePanel({
       flex: 1,
       minHeight: 0
     }
+  }, me.stateFrozen && /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "rgba(217,83,79,0.15)",
+      border: "1.5px solid var(--bad)",
+      borderRadius: 8,
+      padding: 10
+    }
   }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "var(--bad)",
+      textTransform: "uppercase",
+      letterSpacing: 1,
+      marginBottom: 4,
+      fontWeight: 700
+    }
+  }, "☭ State debt"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: "#f7edd3",
+      marginBottom: 6
+    }
+  }, "Your production is frozen. Pay 3 cards to the State to unfreeze."), /*#__PURE__*/React.createElement(Btn, {
+    small: true,
+    disabled: totalCards(me.resources) < 3,
+    onClick: () => mutate(s => payStateDebt(s, clientId))
+  }, "Pay 3 cards to the State")), /*#__PURE__*/React.createElement("div", {
     className: "card"
   }, /*#__PURE__*/React.createElement("h4", {
     style: hTitle
@@ -7583,16 +7756,25 @@ function DiscardModal({
     disabled: pickedTotal !== count,
     onClick: () => mutate(s => {
       const p = s.players.find(pl => pl.id === clientId);
-      RES.forEach(r => {
-        p.resources[r] -= picked[r];
-        s.bank[r] += picked[r];
-      });
+      const cubaMode = s.options?.communistCuba;
+      if (cubaMode) {
+        s.statePool = s.statePool || emptyResources();
+        RES.forEach(r => {
+          p.resources[r] -= picked[r];
+          s.statePool[r] += picked[r];
+        });
+      } else {
+        RES.forEach(r => {
+          p.resources[r] -= picked[r];
+          s.bank[r] += picked[r];
+        });
+      }
       delete s.pendingDiscards[clientId];
-      addLog(s, `${p.name} discarded ${count} cards.`);
+      addLog(s, `${p.name} ${cubaMode ? "surrendered" : "discarded"} ${count} cards${cubaMode ? " to the State" : ""}.`);
       maybeStartRobberMove(s);
       return s;
     })
-  }, "Discard ", pickedTotal, "/", count));
+  }, state.options?.communistCuba ? "Surrender" : "Discard", " ", pickedTotal, "/", count));
 }
 const stepBtn = {
   width: 26,
@@ -8073,6 +8255,125 @@ function setupPlaceRoad(s, playerId, eid) {
   }
   return s;
 }
+function distributeStatePool(s, pool, reason) {
+  // Distribute the pool evenly to all players by resource type, remainder to bank.
+  const numPlayers = s.players.length;
+  if (numPlayers === 0) return;
+  const distributed = emptyResources();
+  const remainder = emptyResources();
+  RES.forEach(r => {
+    const total = pool[r] || 0;
+    if (total <= 0) return;
+    const each = Math.floor(total / numPlayers);
+    const left = total - each * numPlayers;
+    if (each > 0) {
+      s.players.forEach(p => {
+        p.resources[r] += each;
+      });
+      distributed[r] = each;
+    }
+    // Remainder goes back to the bank
+    if (left > 0) {
+      s.bank[r] += left;
+      remainder[r] = left;
+    }
+  });
+  const distSummary = RES.filter(r => distributed[r] > 0).map(r => `${distributed[r]} ${RES_LABEL[r]} each`).join(", ");
+  const bankSummary = RES.filter(r => remainder[r] > 0).map(r => `${remainder[r]} ${RES_LABEL[r]}`).join(", ");
+  const parts = [];
+  if (distSummary) parts.push(`each comrade received ${distSummary}`);
+  if (bankSummary) parts.push(`remainder returned to the bank: ${bankSummary}`);
+  if (parts.length > 0) {
+    addLog(s, `The State (${reason}) — ${parts.join("; ")}.`, {
+      forAll: true,
+      kind: "info",
+      sound: "deal"
+    });
+  } else {
+    addLog(s, `The State (${reason}) — nothing to redistribute.`, {
+      forAll: true,
+      kind: "info"
+    });
+  }
+}
+function applyStateTax(s) {
+  // Take half of every player's resources (round down), pool them, and redistribute evenly.
+  const pool = emptyResources();
+  const taxed = [];
+  s.players.forEach(p => {
+    const totalBefore = totalCards(p.resources);
+    if (totalBefore === 0) {
+      p.consecutiveEmptyTax = (p.consecutiveEmptyTax || 0) + 1;
+      if (p.consecutiveEmptyTax >= 2 && !p.stateFrozen) {
+        p.stateFrozen = true;
+        addLog(s, `${p.name} had nothing to give for 2 tax cycles — the State freezes all production until they pay 3 cards.`, {
+          forAll: true,
+          kind: "warn",
+          sound: "sadThud"
+        });
+      }
+      return;
+    }
+    // Reset empty counter — they had something
+    p.consecutiveEmptyTax = 0;
+    // Take half of each resource type (round down)
+    let taken = 0;
+    RES.forEach(r => {
+      const take = Math.floor((p.resources[r] || 0) / 2);
+      if (take > 0) {
+        p.resources[r] -= take;
+        pool[r] += take;
+        taken += take;
+      }
+    });
+    if (taken > 0) taxed.push(`${p.name} paid ${taken}`);
+  });
+  if (taxed.length > 0) {
+    addLog(s, `☭ Tax cycle — ${taxed.join(", ")}.`, {
+      forAll: true,
+      kind: "info"
+    });
+  } else {
+    addLog(s, `☭ Tax cycle — no resources to collect.`, {
+      forAll: true,
+      kind: "info"
+    });
+  }
+  distributeStatePool(s, pool, "tax redistribution");
+}
+function payStateDebt(s, playerId) {
+  const p = s.players.find(pl => pl.id === playerId);
+  if (!p || !p.stateFrozen) return s;
+  const total = totalCards(p.resources);
+  if (total < 3) {
+    addLog(s, `${p.name} needs 3 cards to pay the State (only has ${total}).`, {
+      forPlayers: [playerId],
+      kind: "warn",
+      sound: "reject"
+    });
+    return s;
+  }
+  // Take 3 cards, preferring the most abundant resource first
+  const sorted = [...RES].sort((a, b) => (p.resources[b] || 0) - (p.resources[a] || 0));
+  let owed = 3;
+  for (const r of sorted) {
+    if (owed <= 0) break;
+    const pay = Math.min(owed, p.resources[r] || 0);
+    if (pay > 0) {
+      p.resources[r] -= pay;
+      s.bank[r] += pay;
+      owed -= pay;
+    }
+  }
+  p.stateFrozen = false;
+  p.consecutiveEmptyTax = 0;
+  addLog(s, `${p.name} paid 3 cards to the State — production unfrozen.`, {
+    forAll: true,
+    kind: "info",
+    sound: "accept"
+  });
+  return s;
+}
 function rollDice(s, playerId) {
   const d1 = 1 + Math.floor(Math.random() * 6);
   const d2 = 1 + Math.floor(Math.random() * 6);
@@ -8108,12 +8409,15 @@ function rollDice(s, playerId) {
     return s;
   }
   let anyResourcesDealt = false;
+  const cubaMode = s.options?.communistCuba;
   s.board.hexes.forEach(h => {
     if (h.number !== total || h.id === s.board.robberHexId || h.resource === "sea") return;
     const gains = {};
     h.cornerIds.forEach(vid => {
       const b = s.board.buildings[vid];
       if (b) {
+        const owner = s.players.find(pl => pl.id === b.owner);
+        if (cubaMode && owner?.stateFrozen) return; // frozen players collect nothing
         const amt = b.type === "city" ? 2 : 1;
         gains[b.owner] = (gains[b.owner] || 0) + amt;
       }
@@ -8157,6 +8461,11 @@ function rollDice(s, playerId) {
 function maybeStartRobberMove(s) {
   const stillWaiting = Object.keys(s.pendingDiscards).length > 0;
   if (!stillWaiting && s.diceRoll && s.diceRoll[0] + s.diceRoll[1] === 7 && !s.robberMoveRequired) {
+    // Communist Cuba: distribute the state pool from discards before letting the Traitor move
+    if (s.options?.communistCuba && s.statePool && totalCards(s.statePool) > 0) {
+      distributeStatePool(s, s.statePool, "confiscated discards");
+      s.statePool = null;
+    }
     s.robberMoveRequired = s.turnOrder[s.currentIndex];
   }
   return s;
@@ -8171,7 +8480,9 @@ function moveRobber(s, playerId, hexId) {
     const b = s.board.buildings[vid];
     if (b && b.owner !== playerId) targets.add(b.owner);
   });
-  addLog(s, `${playerName(s, playerId)} moved the ${isPirate ? "pirate ship" : "marauder"}.`, {
+  const cubaMode = s.options?.communistCuba;
+  const label = cubaMode ? "the Traitor" : isPirate ? "pirate ship" : "marauder";
+  addLog(s, `${playerName(s, playerId)} moved ${label}.`, {
     forAll: true,
     sound: "evilLaugh"
   });
@@ -8447,9 +8758,17 @@ function endTurn(s) {
   s.tradeOffers = [];
   s.blockedTraders = [];
   s.shipMovedThisTurn = false;
+  const wasLastPlayer = s.currentIndex === s.turnOrder.length - 1;
   s.currentIndex = (s.currentIndex + 1) % s.turnOrder.length;
   s.turnPhase = "roll";
   s.turnStartedAt = Date.now();
+  // Communist Cuba tax cycle: fires after the last player finishes their 4th round.
+  if (s.options?.communistCuba && wasLastPlayer) {
+    s.turnsCompleted = (s.turnsCompleted || 0) + 1;
+    if (s.turnsCompleted % 4 === 0) {
+      applyStateTax(s);
+    }
+  }
   const nextId = s.turnOrder[s.currentIndex];
   const nextPlayer = s.players.find(pl => pl.id === nextId);
   addLog(s, `${playerName(s, nextId)}'s turn.`, nextPlayer && !nextPlayer.isBot ? {
@@ -8540,11 +8859,13 @@ function botResolveDiscard(s, botId) {
   const p = s.players.find(pl => pl.id === botId);
   let need = s.pendingDiscards[botId];
   if (!need) return s;
+  const cubaMode = s.options?.communistCuba;
+  if (cubaMode) s.statePool = s.statePool || emptyResources();
   while (need > 0) {
     const r = [...RES].sort((a, b) => p.resources[b] - p.resources[a])[0];
     if (!r || p.resources[r] <= 0) break;
     p.resources[r] -= 1;
-    s.bank[r] += 1;
+    if (cubaMode) s.statePool[r] += 1;else s.bank[r] += 1;
     need -= 1;
   }
   delete s.pendingDiscards[botId];
