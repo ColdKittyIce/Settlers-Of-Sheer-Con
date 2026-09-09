@@ -107,10 +107,10 @@ const EMBEDDED_IMAGES = {
 
 const RES = ["wood", "brick", "sheep", "wheat", "ore"];
 const RES_LABEL = {
-  wood: "Timber",
-  brick: "Clay",
-  sheep: "Wool",
-  wheat: "Grain",
+  wood: "Wood",
+  brick: "Brick",
+  sheep: "Sheep",
+  wheat: "Wheat",
   ore: "Ore"
 };
 const RES_COLOR = {
@@ -1676,6 +1676,24 @@ function ringCoordsAround(landCoords, ringWidth = 1) {
     };
   });
 }
+
+// Wrap a set of land coords with a sea frame. Returns a full map config with
+// coords + forcedTypes so sea hexes render as ocean and don't get land
+// resources.
+function withSeaFrame(landCoords, ringWidth = 1, extraForcedTypes = {}) {
+  const sea = ringCoordsAround(landCoords, ringWidth);
+  const forcedTypes = {
+    ...extraForcedTypes
+  };
+  sea.forEach(c => {
+    const key = `${c.q},${c.r}`;
+    if (!forcedTypes[key]) forcedTypes[key] = "sea";
+  });
+  return {
+    coords: [...landCoords, ...sea],
+    forcedTypes
+  };
+}
 function michiganSeafarersConfig() {
   const land = michiganCoords();
   const ring = ringCoordsAround(land, 1);
@@ -1836,14 +1854,18 @@ const MAPS = {
   },
   fourIslands: {
     name: "Four Islands",
-    desc: "Four separate island clusters — spread out or cluster up.",
+    desc: "Four separate island clusters separated by ocean — Seafarers scenario.",
     minP: 4,
     maxP: 6,
-    build: () => ({
-      coords: fourIslandsCoords(),
-      size: 40,
-      desertCount: 2
-    })
+    build: () => {
+      const framed = withSeaFrame(fourIslandsCoords(), 2);
+      return {
+        coords: framed.coords,
+        size: 40,
+        desertCount: 2,
+        forcedTypes: framed.forcedTypes
+      };
+    }
   },
   seafarersGold: {
     name: "Seafarers Gold",
@@ -1865,25 +1887,40 @@ const MAPS = {
   },
   ringAtoll: {
     name: "Ring Atoll",
-    desc: "A hollow ring of hexes around open water.",
+    desc: "A hollow ring of hexes around open water, wrapped in ocean.",
     minP: 3,
     maxP: 4,
-    build: () => ({
-      coords: ringAtollCoords(),
-      size: 46,
-      desertCount: 1
-    })
+    build: () => {
+      const land = ringAtollCoords();
+      const framed = withSeaFrame(land, 1);
+      // Also mark the center as sea (it's the atoll's lagoon)
+      framed.forcedTypes["0,0"] = "sea";
+      const withCenter = [...framed.coords, {
+        q: 0,
+        r: 0
+      }];
+      return {
+        coords: withCenter,
+        size: 46,
+        desertCount: 1,
+        forcedTypes: framed.forcedTypes
+      };
+    }
   },
   triangle: {
     name: "Triangle",
-    desc: "A triangular delta, tight and confrontational.",
+    desc: "A triangular delta wrapped in ocean, tight and confrontational.",
     minP: 3,
     maxP: 4,
-    build: () => ({
-      coords: triangleCoords(4),
-      size: 48,
-      desertCount: 1
-    })
+    build: () => {
+      const framed = withSeaFrame(triangleCoords(4), 1);
+      return {
+        coords: framed.coords,
+        size: 48,
+        desertCount: 1,
+        forcedTypes: framed.forcedTypes
+      };
+    }
   },
   diamond: {
     name: "Diamond",
@@ -1898,25 +1935,33 @@ const MAPS = {
   },
   longCoast: {
     name: "Long Coast",
-    desc: "A stretched-out coastline for spread-out settling.",
+    desc: "A stretched-out coastline for spread-out settling, wrapped in ocean.",
     minP: 4,
     maxP: 6,
-    build: () => ({
-      coords: longCoastCoords(),
-      size: 42,
-      desertCount: 2
-    })
+    build: () => {
+      const framed = withSeaFrame(longCoastCoords(), 1);
+      return {
+        coords: framed.coords,
+        size: 42,
+        desertCount: 2,
+        forcedTypes: framed.forcedTypes
+      };
+    }
   },
   twinIsles: {
     name: "Twin Isles",
-    desc: "Two islands joined by a narrow isthmus.",
+    desc: "Two islands joined by narrow water, wrapped in ocean — Seafarers scenario.",
     minP: 4,
     maxP: 6,
-    build: () => ({
-      coords: twinIslesCoords(),
-      size: 42,
-      desertCount: 2
-    })
+    build: () => {
+      const framed = withSeaFrame(twinIslesCoords(), 2);
+      return {
+        coords: framed.coords,
+        size: 42,
+        desertCount: 2,
+        forcedTypes: framed.forcedTypes
+      };
+    }
   },
   usa: {
     name: "USA",
@@ -2516,6 +2561,7 @@ function assignBoard(coords, size, options = {}) {
   const loops = orderAllBoundaryLoops(geo.edges);
   const totalBoundaryLen = loops.reduce((a, l) => a + l.length, 0) || 1;
   const landCount = geo.hexes.filter(h => h.resource !== "sea").length;
+  const hasSea = geo.hexes.some(h => h.resource === "sea");
   const portTotal = options.portCount ?? Math.max(5, Math.round(9 * landCount / 19));
   const portTypesBase = ["3:1", "wood", "3:1", "brick", "3:1", "sheep", "wheat", "3:1", "ore"];
   let portTypes = [];
@@ -2523,20 +2569,76 @@ function assignBoard(coords, size, options = {}) {
   portTypes = shuffle(portTypes.slice(0, portTotal));
   const ports = [];
   let typeCursor = 0;
-  loops.forEach(loop => {
-    const share = Math.max(1, Math.round(portTotal * loop.length / totalBoundaryLen));
-    const step = Math.max(2, Math.floor(loop.length / share));
-    for (let i = 0; i < share && i * step < loop.length; i++) {
-      const e = loop[i * step];
-      ports.push({
-        edgeId: e.id,
-        type: portTypes[typeCursor % portTypes.length],
-        vertexIds: [e.v1, e.v2],
-        hexIdx: e.hexIds[0]
-      });
-      typeCursor += 1;
+  if (hasSea) {
+    // Seafarers-style: place ports on LAND-SEA coastal edges. Each port anchors
+    // to a land hex so the badge appears on the coast, not floating in ocean.
+    const isLand = idx => geo.hexes[idx] && geo.hexes[idx].resource !== "sea";
+    const isSea = idx => geo.hexes[idx] && geo.hexes[idx].resource === "sea";
+    // Coastal edges: exactly one land hex + one sea hex
+    const coastal = geo.edges.filter(e => {
+      if (e.hexIds.length !== 2) return false;
+      const [a, b] = e.hexIds;
+      return isLand(a) && isSea(b) || isSea(a) && isLand(b);
+    });
+    // Group coastal edges by their land hex so ports are distributed across
+    // different coastal hexes and not stacked on one island.
+    const byLand = new Map();
+    coastal.forEach(e => {
+      const landIdx = isLand(e.hexIds[0]) ? e.hexIds[0] : e.hexIds[1];
+      if (!byLand.has(landIdx)) byLand.set(landIdx, []);
+      byLand.get(landIdx).push(e);
+    });
+    // Sort land hexes by coastal-edge count desc so hexes with more coast win the first ports.
+    const landHexes = [...byLand.entries()].map(([idx, edges]) => ({
+      idx,
+      edges: shuffle(edges)
+    })).sort((a, b) => b.edges.length - a.edges.length);
+    // Round-robin: give each coastal land hex up to 1 port, cycling until we hit portTotal.
+    const usedLand = new Set();
+    let round = 0;
+    while (ports.length < portTotal && round < 4) {
+      let placedThisRound = 0;
+      for (const {
+        idx,
+        edges
+      } of landHexes) {
+        if (ports.length >= portTotal) break;
+        // In first round, only one port per land hex; later rounds can double up.
+        if (round === 0 && usedLand.has(idx)) continue;
+        if (edges.length === 0) continue;
+        const e = edges.shift();
+        // Prefer land hex as hexIdx so the badge tilts inland (toward the settlement)
+        const landIdx = isLand(e.hexIds[0]) ? e.hexIds[0] : e.hexIds[1];
+        ports.push({
+          edgeId: e.id,
+          type: portTypes[typeCursor % portTypes.length],
+          vertexIds: [e.v1, e.v2],
+          hexIdx: landIdx
+        });
+        typeCursor += 1;
+        usedLand.add(idx);
+        placedThisRound += 1;
+      }
+      if (placedThisRound === 0) break;
+      round += 1;
     }
-  });
+  } else {
+    // No sea hexes — fall back to outer-boundary loops (classic Catan style).
+    loops.forEach(loop => {
+      const share = Math.max(1, Math.round(portTotal * loop.length / totalBoundaryLen));
+      const step = Math.max(2, Math.floor(loop.length / share));
+      for (let i = 0; i < share && i * step < loop.length; i++) {
+        const e = loop[i * step];
+        ports.push({
+          edgeId: e.id,
+          type: portTypes[typeCursor % portTypes.length],
+          vertexIds: [e.v1, e.v2],
+          hexIdx: e.hexIds[0]
+        });
+        typeCursor += 1;
+      }
+    });
+  }
   return {
     hexes: geo.hexes,
     vertices: geo.vertices,
@@ -2666,12 +2768,18 @@ function longestRoadForPlayer(board, playerId) {
   }
   return best;
 }
-function computeVictoryPoints(state, player) {
+// viewerId: the client reading the score. VP cards are secret from other players
+// unless the game is over.
+function computeVictoryPoints(state, player, viewerId) {
   let vp = 0;
   Object.values(state.board.buildings).forEach(b => {
     if (b.owner === player.id) vp += b.type === "city" ? 2 : 1;
   });
-  vp += player.devCards.filter(c => c.type === "vp").length;
+  // Dev card VPs are only visible to the owning player (or when game is over)
+  const canSeeDevVp = viewerId === player.id || !!state.winner;
+  if (canSeeDevVp) {
+    vp += player.devCards.filter(c => c.type === "vp").length;
+  }
   if (state.longestRoad.playerId === player.id) vp += 2;
   if (state.largestArmy.playerId === player.id) vp += 2;
   return vp;
@@ -5993,8 +6101,12 @@ function TopBar({
   const timerSec = state.options?.turnTimerSec || 0;
   let timerLabel = null;
   if (timerSec && state.phase === "playing" && !state.winner) {
-    const remaining = Math.max(0, timerSec - Math.floor(((nowTick || Date.now()) - (state.turnStartedAt || nowTick)) / 1000));
-    timerLabel = `${remaining}s`;
+    const hasPendingDiscards = Object.keys(state.pendingDiscards || {}).length > 0;
+    const pausedMs = state.turnPausedMs || 0;
+    const effectiveStart = (state.turnStartedAt || nowTick) + pausedMs;
+    const elapsed = hasPendingDiscards ? (state.turnPausedAt || nowTick) - (state.turnStartedAt || nowTick) - pausedMs : (nowTick || Date.now()) - effectiveStart;
+    const remaining = Math.max(0, timerSec - Math.floor(Math.max(0, elapsed) / 1000));
+    timerLabel = hasPendingDiscards ? `${remaining}s ⏸` : `${remaining}s`;
   }
   function submitRename() {
     const clean = renameDraft.trim().slice(0, 20);
@@ -6068,11 +6180,15 @@ function TopBar({
     needsRobberMove: needsRobberMove,
     pendingRoadBuilding: pendingRoadBuilding,
     mutate: mutate
-  }), state.options?.allowUndo && state.undoSnapshot?.forPlayer === clientId && state.undoSnapshot?.turnCounter === state.turnCounter && /*#__PURE__*/React.createElement(Btn, {
+  }), state.options?.allowUndo && state.undoSnapshot?.forPlayer === clientId && state.undoSnapshot?.turnCounter === state.turnCounter && state.turnOrder[state.currentIndex] === clientId && /*#__PURE__*/React.createElement(Btn, {
     small: true,
     variant: "ghost",
     onClick: () => mutate(s => {
-      if (!s.undoSnapshot || s.undoSnapshot.forPlayer !== clientId || s.undoSnapshot.turnCounter !== s.turnCounter) return s;
+      // Double-check server-side: must be your snapshot AND still your turn
+      if (!s.undoSnapshot) return s;
+      if (s.undoSnapshot.forPlayer !== clientId) return s;
+      if (s.undoSnapshot.turnCounter !== s.turnCounter) return s;
+      if (s.turnOrder[s.currentIndex] !== clientId) return s;
       const restored = s.undoSnapshot.snapshot;
       restored.undoSnapshot = null;
       addLog(restored, `${playerName(restored, clientId)} undid their last move.`, {
@@ -7225,7 +7341,7 @@ function PlayerPointsBar({
       fontWeight: 800,
       color: "var(--gold)"
     }
-  }, "★", computeVictoryPoints(state, p)))));
+  }, "★", computeVictoryPoints(state, p, clientId)))));
 }
 function SpectatorSidePanel({
   state
@@ -7352,7 +7468,7 @@ function SpectatorSidePanel({
       fontWeight: 700,
       color: "var(--gold)"
     }
-  }, "★", computeVictoryPoints(state, p)))))), /*#__PURE__*/React.createElement("div", {
+  }, "★", computeVictoryPoints(state, p, null)))))), /*#__PURE__*/React.createElement("div", {
     style: {
       flex: 1,
       minHeight: 0,
@@ -7550,7 +7666,7 @@ function SidePanel({
   }, "Trade", myPendingOffers > 0 ? ` (${myPendingOffers} offer${myPendingOffers > 1 ? "s" : ""}!)` : ""), /*#__PURE__*/React.createElement(Btn, {
     small: true,
     variant: "ghost",
-    disabled: !isMyTurn,
+    disabled: false,
     onClick: () => setSelectedDev(true)
   }, "Dev cards (", me.devCards.length, ")"))), state.phase === "playing" && /*#__PURE__*/React.createElement("div", {
     style: {
@@ -7567,7 +7683,7 @@ function SidePanel({
     key: p.id,
     p: p,
     isCurrent: p.id === currentId,
-    vp: computeVictoryPoints(state, p),
+    vp: computeVictoryPoints(state, p, clientId),
     timerLabel: p.id === currentId ? timerLabel : null,
     isMe: p.id === clientId,
     mutate: mutate
@@ -8783,6 +8899,8 @@ function rollDice(s, playerId) {
     if (Object.keys(s.pendingDiscards).length === 0) {
       s.robberMoveRequired = playerId;
     } else {
+      // Pause the turn timer while waiting for discards
+      s.turnPausedAt = Date.now();
       // Anyone who has to discard hears the sad thud
       Object.keys(s.pendingDiscards).forEach(pid => {
         addLog(s, `${playerName(s, pid)} must discard.`, {
@@ -8848,6 +8966,11 @@ function rollDice(s, playerId) {
 function maybeStartRobberMove(s) {
   const stillWaiting = Object.keys(s.pendingDiscards).length > 0;
   if (!stillWaiting && s.diceRoll && s.diceRoll[0] + s.diceRoll[1] === 7 && !s.robberMoveRequired) {
+    // Discards just cleared — accumulate paused time so the timer doesn't penalise the active player
+    if (s.turnPausedAt) {
+      s.turnPausedMs = (s.turnPausedMs || 0) + (Date.now() - s.turnPausedAt);
+      s.turnPausedAt = null;
+    }
     // Communist Cuba: distribute the state pool from discards before letting the Traitor move
     if (s.options?.communistCuba && s.statePool && totalCards(s.statePool) > 0) {
       distributeStatePool(s, s.statePool, "confiscated discards");
@@ -9033,8 +9156,10 @@ function acceptTradeOffer(s, offerId, accepterId) {
     to.resources[r] -= offer.want[r];
   });
   const sameCard = RES.filter(r => offer.give[r] > 0).length === 1 && RES.filter(r => offer.want[r] > 0).length === 1 && RES.every(r => offer.give[r] === offer.want[r]);
-  addLog(s, sameCard ? `${to.name} accepted ${from.name}'s "trade" — the exact same card back. Nice one.` : `${to.name} accepted a trade with ${from.name}.`, {
-    forPlayers: [offer.from, accepterId],
+  const giveSummary = RES.filter(r => offer.give[r] > 0).map(r => `${offer.give[r]} ${RES_LABEL[r]}`).join(", ");
+  const wantSummary = RES.filter(r => offer.want[r] > 0).map(r => `${offer.want[r]} ${RES_LABEL[r]}`).join(", ");
+  addLog(s, sameCard ? `🤝 ${from.name} & ${to.name} traded the same card back. Nice one.` : `🤝 Trade: ${from.name} gave ${giveSummary} → got ${wantSummary} from ${to.name}.`, {
+    forAll: true,
     kind: "accept",
     sound: sameCard ? "jokeTrade" : "accept"
   });
@@ -9125,7 +9250,7 @@ function recalcLargestArmy(s) {
 function checkWinner(s) {
   const target = s.options?.winVp ?? DEFAULT_OPTIONS.winVp;
   s.players.forEach(p => {
-    if (!s.winner && computeVictoryPoints(s, p) >= target) {
+    if (!s.winner && computeVictoryPoints(s, p, p.id) >= target) {
       s.winner = p.id;
       s.phase = "ended";
       addLog(s, `${p.name} reached ${target} victory points!`, {
@@ -9149,6 +9274,8 @@ function endTurn(s) {
   s.currentIndex = (s.currentIndex + 1) % s.turnOrder.length;
   s.turnPhase = "roll";
   s.turnStartedAt = Date.now();
+  s.turnPausedAt = null;
+  s.turnPausedMs = 0;
   // Communist Cuba tax cycle: fires after the last player finishes their 4th round.
   if (s.options?.communistCuba && wasLastPlayer) {
     s.turnsCompleted = (s.turnsCompleted || 0) + 1;
