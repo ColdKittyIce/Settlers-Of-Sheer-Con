@@ -1398,8 +1398,83 @@ function translateCoords(coords, dq, dr) {
   }));
 }
 function fourIslandsCoords() {
-  const cluster = hexagonCoords(1);
-  return [...translateCoords(cluster, -4, -3), ...translateCoords(cluster, 4, -3), ...translateCoords(cluster, -4, 3), ...translateCoords(cluster, 4, 3)];
+  // Official Seafarers "Four Islands" for 3-4 players:
+  // Four distinct land groups, each 4-7 hexes, separated by max 2-3 sea hexes.
+  // NW island: 5-hex cross shape
+  const nw = [{
+    q: -5,
+    r: -2
+  }, {
+    q: -4,
+    r: -2
+  }, {
+    q: -3,
+    r: -2
+  }, {
+    q: -5,
+    r: -1
+  }, {
+    q: -4,
+    r: -1
+  }];
+  // NE island: 5-hex L-shape
+  const ne = [{
+    q: 2,
+    r: -3
+  }, {
+    q: 3,
+    r: -3
+  }, {
+    q: 2,
+    r: -2
+  }, {
+    q: 3,
+    r: -2
+  }, {
+    q: 4,
+    r: -2
+  }];
+  // SW island: 6-hex rectangular
+  const sw = [{
+    q: -5,
+    r: 2
+  }, {
+    q: -4,
+    r: 2
+  }, {
+    q: -5,
+    r: 3
+  }, {
+    q: -4,
+    r: 3
+  }, {
+    q: -5,
+    r: 4
+  }, {
+    q: -4,
+    r: 4
+  }];
+  // SE island: 6-hex irregular
+  const se = [{
+    q: 2,
+    r: 1
+  }, {
+    q: 3,
+    r: 1
+  }, {
+    q: 2,
+    r: 2
+  }, {
+    q: 3,
+    r: 2
+  }, {
+    q: 4,
+    r: 2
+  }, {
+    q: 3,
+    r: 3
+  }];
+  return [...nw, ...ne, ...sw, ...se];
 }
 function starCoords() {
   const dirs = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
@@ -1420,6 +1495,8 @@ function starCoords() {
   return coords;
 }
 function ringAtollCoords() {
+  // A ring of hexes around a sea center — each arm is 2 hexes wide so it feels
+  // substantial. Center hex will be forced to sea by the map builder.
   return hexagonCoords(2).filter(c => !(c.q === 0 && c.r === 0));
 }
 function seafarersGoldConfig() {
@@ -1858,7 +1935,10 @@ const MAPS = {
     minP: 4,
     maxP: 6,
     build: () => {
-      const framed = withSeaFrame(fourIslandsCoords(), 2);
+      const land = fourIslandsCoords();
+      // 1-ring sea frame keeps islands close enough for ships to reach each other
+      // in 3-5 turns while still feeling distinct. 2 rings made them too far.
+      const framed = withSeaFrame(land, 1);
       return {
         coords: framed.coords,
         size: 40,
@@ -5067,18 +5147,13 @@ function Board({
       stroke: "#7a6a4a",
       strokeWidth: 1.5,
       strokeDasharray: "2,2"
-    }), badgeUrl ? /*#__PURE__*/React.createElement("image", {
+    }), badgeUrl && /*#__PURE__*/React.createElement("image", {
       href: badgeUrl,
       x: ox - badgeSize / 2,
       y: oy - badgeSize / 2,
       width: badgeSize,
       height: badgeSize,
       preserveAspectRatio: "xMidYMid meet"
-    }) : /*#__PURE__*/React.createElement("polygon", {
-      points: `${ox},${oy - 15} ${ox + 14},${oy + 9} ${ox - 14},${oy + 9}`,
-      fill: "#f7edd0",
-      stroke: "#4a3220",
-      strokeWidth: 1.5
     }), /*#__PURE__*/React.createElement("text", {
       x: ox,
       y: oy + badgeSize / 2 + 7,
