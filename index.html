@@ -36,45 +36,6 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
-  // ==== PASTE YOUR FIREBASE CONFIG HERE ====
-  const firebaseConfig = {
-    apiKey: "AIzaSyDfmxWgAVI_ZCzdDB3JDitLaIjkni0zuVA",
-    authDomain: "settler-of-sheer-con.firebaseapp.com",
-    databaseURL: "https://settler-of-sheer-con-default-rtdb.firebaseio.com",
-    projectId: "settler-of-sheer-con",
-    storageBucket: "settler-of-sheer-con.firebasestorage.app",
-    messagingSenderId: "714378733312",
-    appId: "1:714378733312:web:418e31221547506bad35e5",
-  };
-  // ==========================================
-
-  try {
-    const app = firebase.initializeApp(firebaseConfig);
-    const db = firebase.database();
-    // Shim matching the modular Firebase API shape the game code expects,
-    // built on top of the plain-script "compat" SDK (avoids ES module
-    // import syntax entirely, which conflicts with the in-browser Babel
-    // transformer used below to run the JSX without a build step).
-    window.__fb = {
-      db,
-      ref: (database, path) => database.ref(path),
-      get: (reference) => reference.once("value"),
-      set: (reference, value) => reference.set(value),
-      onValue: (reference, callback) => {
-        reference.on("value", callback);
-        return () => reference.off("value", callback);
-      },
-    };
-  } catch (e) {
-    console.error("Firebase init failed:", e);
-    document.getElementById("fb-error-banner").style.display = "block";
-  }
-</script>
-
-<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-
-<script>
 const {
   useState,
   useEffect,
@@ -1398,85 +1359,85 @@ function translateCoords(coords, dq, dr) {
   }));
 }
 function fourIslandsCoords() {
-  // Official Seafarers "Four Islands" for 3-4 players:
-  // Four distinct land groups, each 4-7 hexes, separated by max 2-3 sea hexes.
-  // NW island: 5-hex cross shape
+  // Four island clusters arranged so every cluster touches its two neighbors
+  // (gap=0 = shared edge). The diagonal pairs (NW-SE, NE-SW) have one sea hex
+  // between them. withSeaFrame then wraps only the outer perimeter — no ocean
+  // appears between adjacent clusters, giving a connected-looking board.
+  // Layout (N=NW, E=NE, W=SW, S=SE):
+  //   . E E . .
+  //   N N . E E E
+  //   N N N . S S
+  //   . W W W S S
+  //   . W W . . S
   const nw = [{
-    q: -5,
-    r: -2
+    q: -3,
+    r: -1
   }, {
-    q: -4,
-    r: -2
+    q: -2,
+    r: -1
   }, {
     q: -3,
-    r: -2
+    r: 0
   }, {
-    q: -5,
-    r: -1
+    q: -2,
+    r: 0
   }, {
-    q: -4,
-    r: -1
+    q: -1,
+    r: 0
   }];
-  // NE island: 5-hex L-shape
   const ne = [{
-    q: 2,
-    r: -3
-  }, {
-    q: 3,
-    r: -3
+    q: 1,
+    r: -2
   }, {
     q: 2,
     r: -2
   }, {
-    q: 3,
-    r: -2
+    q: 0,
+    r: -1
   }, {
-    q: 4,
-    r: -2
+    q: 1,
+    r: -1
+  }, {
+    q: 2,
+    r: -1
   }];
-  // SW island: 6-hex rectangular
   const sw = [{
-    q: -5,
+    q: -2,
+    r: 1
+  }, {
+    q: -1,
+    r: 1
+  }, {
+    q: 0,
+    r: 1
+  }, {
+    q: -2,
     r: 2
   }, {
-    q: -4,
+    q: -1,
     r: 2
-  }, {
-    q: -5,
-    r: 3
-  }, {
-    q: -4,
-    r: 3
-  }, {
-    q: -5,
-    r: 4
-  }, {
-    q: -4,
-    r: 4
   }];
-  // SE island: 6-hex irregular
   const se = [{
+    q: 1,
+    r: 0
+  }, {
+    q: 2,
+    r: 0
+  }, {
+    q: 1,
+    r: 1
+  }, {
     q: 2,
     r: 1
   }, {
-    q: 3,
-    r: 1
-  }, {
     q: 2,
     r: 2
-  }, {
-    q: 3,
-    r: 2
-  }, {
-    q: 4,
-    r: 2
-  }, {
-    q: 3,
-    r: 3
   }];
   return [...nw, ...ne, ...sw, ...se];
 }
 function starCoords() {
+  // Six-armed star: center + 2 hexes along each of the 6 axial directions.
+  // Arms don't touch each other — confirmed by audit (0 cross-arm adjacencies).
   const dirs = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
   const coords = [{
     q: 0,
@@ -1495,9 +1456,12 @@ function starCoords() {
   return coords;
 }
 function ringAtollCoords() {
-  // A ring of hexes around a sea center — each arm is 2 hexes wide so it feels
-  // substantial. Center hex will be forced to sea by the map builder.
-  return hexagonCoords(2).filter(c => !(c.q === 0 && c.r === 0));
+  // True atoll: just the outer shell at distance=2 from center (12 hexes).
+  // The center and inner ring are left as sea — ship routes go through the lagoon.
+  return hexagonCoords(2).filter(c => {
+    const dist = Math.max(Math.abs(c.q), Math.abs(c.r), Math.abs(-c.q - c.r));
+    return dist === 2;
+  });
 }
 function seafarersGoldConfig() {
   const coords = hexagonCoords(3);
@@ -1520,6 +1484,7 @@ function seafarersGoldConfig() {
   };
 }
 function triangleCoords(n) {
+  // Triangular board: n+1 rows tapering from n+1 wide to 1 hex at the tip.
   const coords = [];
   for (let q = 0; q <= n; q++) {
     for (let r = 0; r <= n - q; r++) coords.push({
@@ -1530,39 +1495,41 @@ function triangleCoords(n) {
   return coords;
 }
 function diamondCoords(n) {
+  // True diamond shape: tall pointy rhombus in axial hex space.
+  // n=3 → 16 hexes (good for 3-4p), centered at origin.
+  // Row r has (n - |r| + 1) hexes, offset to keep visual center.
   const coords = [];
-  for (let q = 0; q <= n; q++) {
-    for (let r = 0; r <= n; r++) coords.push({
-      q,
+  for (let r = -n; r <= n; r++) {
+    const width = n - Math.abs(r) + 1;
+    const qOff = -Math.floor(r / 2); // pointy-top hex column offset
+    const qStart = -Math.floor(width / 2) + qOff;
+    for (let i = 0; i < width; i++) coords.push({
+      q: qStart + i,
       r
     });
   }
   return coords;
 }
 function longCoastCoords() {
+  // A wide coastal strip — 5 rows × 6 cols gives 30 hexes, suitable for 4-6 players.
+  // Staggered for a natural coastline feel rather than a rigid rectangle.
+  const widths = [5, 6, 6, 6, 5];
   const coords = [];
-  for (let r = -1; r <= 1; r++) {
-    for (let q = -3; q <= 3; q++) coords.push({
-      q,
+  widths.forEach((w, r) => {
+    const qStart = -Math.floor(w / 2);
+    for (let i = 0; i < w; i++) coords.push({
+      q: qStart + i,
       r
     });
-  }
+  });
   return coords;
 }
 function twinIslesCoords() {
+  // Two 7-hex islands separated by a 2-hex strait (no bridge land hexes —
+  // players cross by ship, as Seafarers intends).
   const isleA = hexagonCoords(1);
-  const isleB = translateCoords(hexagonCoords(1), 6, 0);
-  const bridge = [{
-    q: 2,
-    r: 0
-  }, {
-    q: 3,
-    r: 0
-  }, {
-    q: 4,
-    r: 0
-  }];
-  return [...isleA, ...bridge, ...isleB];
+  const isleB = translateCoords(hexagonCoords(1), 5, 0);
+  return [...isleA, ...isleB];
 }
 function rowShapeCoords(rowWidths, opts = {}) {
   const lean = opts.lean || 0;
@@ -1967,21 +1934,24 @@ const MAPS = {
   },
   ringAtoll: {
     name: "Ring Atoll",
-    desc: "A hollow ring of hexes around open water, wrapped in ocean.",
+    desc: "A coral ring of 12 hexes around a sea lagoon — ships pass through the center.",
     minP: 3,
     maxP: 4,
     build: () => {
-      const land = ringAtollCoords();
-      const framed = withSeaFrame(land, 1);
-      // Also mark the center as sea (it's the atoll's lagoon)
-      framed.forcedTypes["0,0"] = "sea";
-      const withCenter = [...framed.coords, {
-        q: 0,
-        r: 0
-      }];
+      const outerRing = ringAtollCoords(); // 12 outer-shell hexes
+      // Fill the interior (inner ring + center) as sea hexes
+      const innerAndCenter = hexagonCoords(1); // center + 6 neighbors = 7 hexes
+      const forcedTypes = {};
+      innerAndCenter.forEach(c => forcedTypes[`${c.q},${c.r}`] = "sea");
+      const framed = withSeaFrame(outerRing, 1);
+      // Merge forced types: inner sea overrides anything withSeaFrame set
+      Object.assign(framed.forcedTypes, forcedTypes);
+      const allCoords = [...framed.coords, ...innerAndCenter.filter(c => {
+        return !framed.coords.some(fc => fc.q === c.q && fc.r === c.r);
+      })];
       return {
-        coords: withCenter,
-        size: 46,
+        coords: allCoords,
+        size: 48,
         desertCount: 1,
         forcedTypes: framed.forcedTypes
       };
@@ -2004,25 +1974,25 @@ const MAPS = {
   },
   diamond: {
     name: "Diamond",
-    desc: "A diamond-shaped plateau with wide-open middle.",
+    desc: "A true diamond-shaped board, symmetrical in all directions.",
     minP: 3,
     maxP: 4,
     build: () => ({
       coords: diamondCoords(3),
-      size: 46,
+      size: 44,
       desertCount: 1
     })
   },
   longCoast: {
     name: "Long Coast",
-    desc: "A stretched-out coastline for spread-out settling, wrapped in ocean.",
+    desc: "A wide coastal strip — 30 hexes for 4-6 players, wrapped in ocean.",
     minP: 4,
     maxP: 6,
     build: () => {
       const framed = withSeaFrame(longCoastCoords(), 1);
       return {
         coords: framed.coords,
-        size: 42,
+        size: 44,
         desertCount: 2,
         forcedTypes: framed.forcedTypes
       };
@@ -2030,14 +2000,14 @@ const MAPS = {
   },
   twinIsles: {
     name: "Twin Isles",
-    desc: "Two islands joined by narrow water, wrapped in ocean — Seafarers scenario.",
+    desc: "Two islands separated by a 2-hex strait — Seafarers crossing required.",
     minP: 4,
     maxP: 6,
     build: () => {
-      const framed = withSeaFrame(twinIslesCoords(), 2);
+      const framed = withSeaFrame(twinIslesCoords(), 1);
       return {
         coords: framed.coords,
-        size: 42,
+        size: 44,
         desertCount: 2,
         forcedTypes: framed.forcedTypes
       };
@@ -2888,39 +2858,36 @@ async function loadGame(code) {
   const snap = await get(ref(db, "games/" + code));
   return snap.exists() ? JSON.parse(snap.val().json) : null;
 }
-function fbSubscribeGame(code, cb) {
-  const {
-    db,
-    ref,
-    onValue
-  } = window.__fb;
-  const r = ref(db, "games/" + code);
-  return onValue(r, snap => {
-    if (snap.exists()) cb(JSON.parse(snap.val().json));
-  });
-}
 function useGame(code) {
   const [state, setState] = useState(null);
   const [error, setError] = useState(null);
+  const versionRef = useRef(0);
+  const load = useCallback(async () => {
+    try {
+      const parsed = await loadGame(code);
+      if (parsed) {
+        setState(parsed);
+        versionRef.current += 1;
+      }
+    } catch (e) {
+      setError("couldn't load game");
+    }
+  }, [code]);
   useEffect(() => {
     if (!code) return;
-    let unsub = null;
-    try {
-      unsub = fbSubscribeGame(code, val => setState(val));
-    } catch (e) {
-      setError("couldn't connect to Firebase");
-    }
-    return () => {
-      if (unsub) unsub();
-    };
-  }, [code]);
+    load();
+    const id = setInterval(load, POLL_MS);
+    return () => clearInterval(id);
+  }, [code, load]);
   const mutate = useCallback(async updater => {
     try {
-      let current = null;
+      let current = state;
       try {
-        current = await loadGame(code);
-      } catch (e) {}
-      if (!current) current = state;
+        const parsed = await loadGame(code);
+        if (parsed) current = parsed;
+      } catch (e) {
+        /* fall back to local state */
+      }
       const next = updater(structuredCloneSafe(current));
       if (!next) return;
       await saveGame(code, next);
@@ -2932,7 +2899,8 @@ function useGame(code) {
   return {
     state,
     mutate,
-    error
+    error,
+    reload: load
   };
 }
 function structuredCloneSafe(obj) {
