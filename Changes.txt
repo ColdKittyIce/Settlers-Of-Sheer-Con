@@ -1,0 +1,20 @@
+-the hexes still aren't really fitting uniformally on the board look at the edges of the hexes why are they so strange fitting?
+
+-we are missing sounds, the fanfaresound should play when a game starts, this is before settlement placement happens. We also ar not getting sound on the initial placing of settlements
+
+
+
+
+-development card victory points showing in point total should be secret
+
+-when a trade happens it doesn't give a clear notification that a trade was acceptd
+
+-when it is not your turn you can not see your development cards or try to set up a trade
+
+-lets rename the resources in the game: Clay is now called Brick, Grain is now called Wheat, Lumber is now called Wood, Wool is now called Sheep
+
+-in the michigan seafarers map I noticed that the ports are all out in the ocean (see image)
+
+-last night I played with human players. I rolled a 7. an opponent had to discard. he waited to discard. my turn time was still counting down. he waited until my turn time was at 0 and then discarded. I was able to move the robber but because my turn time ran out while waiting for my opponent to discard i did not get my proper turn. The game progressed to the next player. the next player got to pick who got robbed and I believe they got that resource, then they got their turn. I was on desktop, he was on mobile.
+
+-my friend was able to undo another players last move, he was on mobile and I and my friend were on desktop

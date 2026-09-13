@@ -1,0 +1,19 @@
+sounds/
+├── dice.mp3            ← dice being rolled
+├── build.mp3           ← thud when placing a road/settlement/city/ship
+├── accept.mp3          ← trade accepted
+├── reject.mp3          ← trade rejected
+├── offer.mp3           ← trade offered to you
+├── turn.mp3            ← turn passed to next player
+├── steal.mp3           ← someone stole a card from you
+├── achievement.mp3     ← generic reward chime (Longest Road / Largest Army fallback)
+├── victory.mp3         ← game won (currently a roar-ish sound)
+├── evilLaugh.mp3       ← robber gets moved
+├── sadThud.mp3         ← you have to discard on a 7
+├── fanfare.mp3         ← game starts (after setup ends)
+├── chatBlip.mp3        ← new chat message from someone else
+├── devCard.mp3         ← development card played
+├── deal.mp3            ← whoosh, resources being distributed
+├── chant.mp3           ← Largest Army claimed
+├── carPass.mp3         ← Longest Road claimed
+└── jokeTrade.mp3       ← 1:1 same-resource trade completed

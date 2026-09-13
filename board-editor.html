@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Sheer Con — Board Editor</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #0d1b2a; color: #e0e8f0; font-family: system-ui, sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+/* ── Top bar (standalone only) ── */
+#topbar { display: flex; align-items: center; gap: 10px; padding: 8px 14px; background: #111e2e; border-bottom: 1px solid #1e3a5f; flex-shrink: 0; }
+#topbar h1 { font-size: 15px; font-weight: 700; color: #f7edd3; }
+#topbar .spacer { flex: 1; }
+body.in-iframe #topbar { display: none; }
+
+/* ── Main layout ── */
+#main { display: flex; flex: 1; min-height: 0; }
+
+/* ── Sidebar ── */
+#sidebar { width: 220px; min-width: 220px; background: #111e2e; border-right: 1px solid #1e3a5f; display: flex; flex-direction: column; overflow-y: auto; flex-shrink: 0; }
+.panel { padding: 10px 12px; border-bottom: 1px solid #1e3a5f; }
+.panel h3 { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #5a8fc0; margin-bottom: 7px; }
+
+/* ── Tool buttons ── */
+.tool-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
+.tool-btn { padding: 6px 4px; border: 1px solid #1e3a5f; border-radius: 5px; background: #192a3e; color: #c0d4e8; font-size: 10px; cursor: pointer; text-align: center; transition: all .12s; }
+.tool-btn:hover { background: #1e3a5f; }
+.tool-btn.active { background: #1a5276; border-color: #2e86c1; color: #fff; font-weight: 600; }
+.tool-btn.wide { grid-column: 1/-1; }
+
+/* ── Hex type swatches ── */
+.swatch-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; }
+.swatch { width: 100%; aspect-ratio: 1; border-radius: 4px; border: 2px solid transparent; cursor: pointer; font-size: 8px; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 1px; color: #fff; text-shadow: 0 1px 2px #000; transition: border-color .1s; }
+.swatch:hover { border-color: #fff; }
+.swatch.active { border-color: #f0c040; }
+.swatch.rand   { background: #253525; }
+.swatch.sea    { background: #1a4a7a; }
+.swatch.wood   { background: #2d6a2d; }
+.swatch.brick  { background: #8b3a1a; }
+.swatch.sheep  { background: #5a9e3a; }
+.swatch.wheat  { background: #c8a020; }
+.swatch.ore    { background: #4a4a6a; }
+.swatch.desert { background: #b8a060; }
+.swatch.gold   { background: #c8900a; }
+.swatch.fog    { background: #2a3a4a; }
+
+/* ── Port swatches ── */
+.port-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; }
+.port-swatch { padding: 5px 3px; border: 2px solid #1e3a5f; border-radius: 4px; cursor: pointer; font-size: 10px; text-align: center; background: #192a3e; color: #e0e8f0; transition: border-color .1s; }
+.port-swatch:hover { border-color: #5a8fc0; }
+.port-swatch.active { border-color: #f0c040; background: #1a3a54; }
+
+/* ── Form rows ── */
+.row { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; }
+.row label { font-size: 10px; color: #8ab0cc; flex: 1; }
+.row input[type=range] { flex: 2; accent-color: #2e86c1; height: 4px; }
+.row span { font-size: 10px; color: #fff; width: 22px; text-align: right; }
+.num-input { width: 46px; background: #192a3e; border: 1px solid #1e3a5f; color: #fff; border-radius: 4px; padding: 3px 5px; font-size: 11px; text-align: center; }
+.dim-row { display: flex; align-items: center; gap: 5px; margin-bottom: 5px; }
+.dim-row label { font-size: 10px; color: #8ab0cc; width: 44px; }
+
+/* ── Action buttons ── */
+.action-btn { width: 100%; padding: 6px; border-radius: 5px; border: none; cursor: pointer; font-size: 10px; font-weight: 600; margin-bottom: 4px; transition: background .12s; }
+.action-btn.primary { background: #1a5276; color: #fff; }
+.action-btn.primary:hover { background: #2e86c1; }
+.action-btn.danger { background: #5a1a1a; color: #ffaaaa; }
+.action-btn.danger:hover { background: #8b2222; }
+.action-btn.success { background: #1a5a2a; color: #aaffaa; }
+.action-btn.success:hover { background: #2a8a3a; }
+.action-btn.neutral { background: #2a2a3a; color: #c0d0e0; }
+.action-btn.neutral:hover { background: #3a3a5a; }
+.action-btn.save-game { background: #1a4a7a; color: #aaddff; display: none; }
+.action-btn.save-game:hover { background: #2a6aaa; }
+body.in-iframe .action-btn.save-game { display: block; }
+
+select { background: #192a3e; border: 1px solid #1e3a5f; color: #fff; border-radius: 4px; padding: 3px 5px; font-size: 10px; width: 100%; margin-bottom: 5px; }
+textarea.map-desc { width: 100%; background: #192a3e; border: 1px solid #1e3a5f; color: #fff; border-radius: 4px; padding: 4px 6px; font-size: 10px; resize: none; line-height: 1.4; }
+input.map-name { width: 100%; background: #192a3e; border: 1px solid #1e3a5f; color: #fff; border-radius: 4px; padding: 4px 6px; font-size: 11px; margin-bottom: 5px; }
+
+/* ── Canvas ── */
+#canvas-area { flex: 1; position: relative; overflow: hidden; }
+#board-svg { width: 100%; height: 100%; display: block; }
+
+/* ── Info bar ── */
+#info-bar { position: absolute; bottom: 0; left: 0; right: 0; background: rgba(0,0,0,.6); padding: 3px 10px; font-size: 10px; color: #8ab0cc; display: flex; gap: 14px; pointer-events: none; }
+#hover-info { color: #fff; flex: 1; }
+
+/* ── Code modal ── */
+#code-modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.8); z-index: 100; align-items: center; justify-content: center; }
+#code-modal.open { display: flex; }
+#code-box { background: #111e2e; border: 1px solid #1e3a5f; border-radius: 10px; padding: 18px; width: 700px; max-width: 96vw; max-height: 85vh; display: flex; flex-direction: column; gap: 10px; }
+#code-box h2 { color: #5a8fc0; font-size: 13px; }
+#code-box textarea { flex: 1; min-height: 300px; background: #0a1520; border: 1px solid #1e3a5f; color: #aee; font-family: monospace; font-size: 11px; padding: 10px; border-radius: 6px; resize: none; }
+.btn-row { display: flex; gap: 8px; justify-content: flex-end; }
+.btn-copy  { background: #1a5276; color: #fff; padding: 7px 14px; border-radius: 5px; border: none; cursor: pointer; font-size: 11px; }
+.btn-close { background: #3a2a1a; color: #ffccaa; padding: 7px 14px; border-radius: 5px; border: none; cursor: pointer; font-size: 11px; }
+
+/* ── Stats ── */
+#stats { font-size: 10px; color: #8ab0cc; line-height: 1.8; }
+</style>
+</head>
+<body>
+
+<!-- Top bar (hidden in iframe) -->
+<div id="topbar">
+  <h1>🗺️ Sheer Con — Board Editor</h1>
+  <div class="spacer"></div>
+</div>
+
+<div id="main">
+
+<!-- ══════════════════════ SIDEBAR ══════════════════════ -->
+<div id="sidebar">
+
+  <div class="panel">
+    <h3>🗺️ Load Preset</h3>
+    <select id="map-preset">
+      <option value="">— Choose preset —</option>
+      <option value="standard">Standard (19 hexes)</option>
+      <option value="extended">Extended (37 hexes)</option>
+      <option value="small">Small (7 hexes)</option>
+      <option value="fourIslands">Four Islands</option>
+      <option value="twinIsles">Twin Isles</option>
+      <option value="ringAtoll">Ring Atoll</option>
+      <option value="headingForNewShores">Heading for New Shores</option>
+      <option value="wondersOfCatan">Wonders of Catan</option>
+    </select>
+  </div>
+
+  <div class="panel">
+    <h3>📐 New Grid</h3>
+    <div class="dim-row">
+      <label>Width</label>
+      <input class="num-input" type="number" id="grid-w" value="7" min="1" max="30"/>
+      <span style="font-size:10px;color:#8ab0cc">cols</span>
+    </div>
+    <div class="dim-row">
+      <label>Height</label>
+      <input class="num-input" type="number" id="grid-h" value="5" min="1" max="30"/>
+      <span style="font-size:10px;color:#8ab0cc">rows</span>
+    </div>
+    <button class="action-btn primary" onclick="makeGrid()">Create Grid</button>
+    <button class="action-btn neutral" onclick="addHexRing()">+ Expand Border</button>
+    <button class="action-btn neutral" onclick="fillSeaGaps()">Fill Sea Gaps</button>
+    <button class="action-btn danger"  onclick="clearBoard()">Clear Board</button>
+  </div>
+
+  <div class="panel">
+    <h3>🖊️ Tool</h3>
+    <div class="tool-grid">
+      <div class="tool-btn active wide" id="tool-paint"   onclick="setTool('paint')">🎨 Paint</div>
+      <div class="tool-btn"             id="tool-add-hex" onclick="setTool('add-hex')">➕ Add Hex</div>
+      <div class="tool-btn"             id="tool-del-hex" onclick="setTool('del-hex')">🗑️ Del Hex</div>
+      <div class="tool-btn"             id="tool-port"    onclick="setTool('port')">⚓ Place Port</div>
+      <div class="tool-btn"             id="tool-del-port" onclick="setTool('del-port')">✂️ Del Port</div>
+      <div class="tool-btn"             id="tool-pan"     onclick="setTool('pan')">✋ Pan</div>
+    </div>
+  </div>
+
+  <div class="panel" id="paint-panel">
+    <h3>🎨 Hex Type</h3>
+    <div class="swatch-grid">
+      <div class="swatch rand   active" id="type-rand"   onclick="setHexType('rand')">🎲<br>Rand</div>
+      <div class="swatch sea"           id="type-sea"    onclick="setHexType('sea')">🌊<br>Sea</div>
+      <div class="swatch wood"          id="type-wood"   onclick="setHexType('wood')">🌲<br>Wood</div>
+      <div class="swatch brick"         id="type-brick"  onclick="setHexType('brick')">🧱<br>Brick</div>
+      <div class="swatch sheep"         id="type-sheep"  onclick="setHexType('sheep')">🐑<br>Sheep</div>
+      <div class="swatch wheat"         id="type-wheat"  onclick="setHexType('wheat')">🌾<br>Wheat</div>
+      <div class="swatch ore"           id="type-ore"    onclick="setHexType('ore')">⛏️<br>Ore</div>
+      <div class="swatch desert"        id="type-desert" onclick="setHexType('desert')">🏜️<br>Desert</div>
+      <div class="swatch gold"          id="type-gold"   onclick="setHexType('gold')">💰<br>Gold</div>
+      <div class="swatch fog"           id="type-fog"    onclick="setHexType('fog')">🌫️<br>Fog</div>
+    </div>
+  </div>
+
+  <div class="panel" id="port-panel" style="display:none">
+    <h3>⚓ Port Type</h3>
+    <div class="port-grid">
+      <div class="port-swatch active" id="port-rand"  onclick="setPortType('rand')">⚓ Random</div>
+      <div class="port-swatch"        id="port-3to1"  onclick="setPortType('3:1')">3:1 Generic</div>
+      <div class="port-swatch"        id="port-wood"  onclick="setPortType('wood')">2:1 🌲</div>
+      <div class="port-swatch"        id="port-brick" onclick="setPortType('brick')">2:1 🧱</div>
+      <div class="port-swatch"        id="port-sheep" onclick="setPortType('sheep')">2:1 🐑</div>
+      <div class="port-swatch"        id="port-wheat" onclick="setPortType('wheat')">2:1 🌾</div>
+      <div class="port-swatch"        id="port-ore"   onclick="setPortType('ore')">2:1 ⛏️</div>
+    </div>
+    <p style="font-size:9px;color:#5a8fc0;margin-top:6px">Click a dashed coastal edge</p>
+  </div>
+
+  <div class="panel">
+    <h3>⚓ Port Settings</h3>
+    <label style="display:flex;align-items:center;gap:7px;cursor:pointer;font-size:10px;color:#c0d4e8;margin-bottom:6px">
+      <input type="checkbox" id="random-ports-cb" onchange="toggleRandomPorts()" style="accent-color:#2e86c1;width:13px;height:13px"/>
+      Random port placement
+    </label>
+    <div id="random-ports-opts" style="display:none">
+      <div class="row">
+        <label>Port count</label>
+        <input class="num-input" type="number" id="random-port-count" value="9" min="1" max="20"/>
+      </div>
+      <p style="font-size:9px;color:#5a7a9a;line-height:1.4">Ports placed randomly each game. Fixed ports ignored on export.</p>
+    </div>
+    <div id="fixed-ports-hint">
+      <p style="font-size:9px;color:#5a8fc0">Use ⚓ Place Port tool to pin ports to specific coastal edges.</p>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h3>🔍 View</h3>
+    <div class="row">
+      <label>Hex size</label>
+      <input type="range" id="hex-size" min="14" max="72" value="40" oninput="onHexSizeChange(this.value)"/>
+      <span id="hex-size-val">40</span>
+    </div>
+    <button class="action-btn neutral" onclick="fitView();render()">⊡ Fit to Screen</button>
+  </div>
+
+  <div class="panel">
+    <h3>📋 Map Info</h3>
+    <input  class="map-name" type="text"  id="map-name" value="My Custom Map" placeholder="Map name"/>
+    <textarea class="map-desc" id="map-desc" rows="2" placeholder="Short description…">Custom board layout.</textarea>
+  </div>
+
+  <div class="panel">
+    <h3>💾 Save / Export</h3>
+    <button class="action-btn save-game" onclick="saveToGame()">💾 Save to Game</button>
+    <button class="action-btn success"   onclick="exportCode()">Export JSX Config</button>
+    <button class="action-btn primary"   onclick="exportJSON()">Export JSON</button>
+    <button class="action-btn neutral"   onclick="importJSON()">Import JSON</button>
+  </div>
+
+  <div class="panel">
+    <h3>📊 Stats</h3>
+    <div id="stats"></div>
+  </div>
+
+</div>
+<!-- ══════════════════════ END SIDEBAR ══════════════════════ -->
+
+<div id="canvas-area">
+  <svg id="board-svg"></svg>
+  <div id="info-bar">
+    <span id="hover-info">Hover a hex to inspect</span>
+    <span>Tool: <b id="tool-label">Paint</b></span>
+    <span>Hexes: <b id="hex-count">0</b></span>
+    <span>Ports: <b id="port-count">0</b></span>
+    <span style="color:#5a8fc0">Scroll=zoom · Drag=pan (✋)</span>
+  </div>
+</div>
+
+</div><!-- #main -->
+
+<!-- Code output modal -->
+<div id="code-modal">
+  <div id="code-box">
+    <h2 id="code-title">Export</h2>
+    <textarea id="code-output" readonly></textarea>
+    <div class="btn-row">
+      <button class="btn-copy" onclick="copyCode()">📋 Copy</button>
+      <button class="btn-close" onclick="closeModal()">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+// IFRAME DETECTION
+// ─────────────────────────────────────────────
+const IN_IFRAME = window.self !== window.top;
+if (IN_IFRAME) document.body.classList.add('in-iframe');
+
+// ─────────────────────────────────────────────
+// HEX MATH  (pointy-top axial)
+// ─────────────────────────────────────────────
+const HEX_DIRS = [[1,0],[0,1],[-1,1],[-1,0],[0,-1],[1,-1]];
+
+function hexCenter(q,r,size){ return {x:size*Math.sqrt(3)*(q+r/2), y:size*1.5*r}; }
+function hexCorners(cx,cy,size){
+  return Array.from({length:6},(_,i)=>{
+    const a=Math.PI/180*(60*i-30);
+    return {x:cx+size*Math.cos(a), y:cy+size*Math.sin(a)};
+  });
+}
+function pixelToHex(px,py,size){
+  const q=(px*Math.sqrt(3)/3-py/3)/size, r=py*2/3/size;
+  let rq=Math.round(q),rr=Math.round(r),rs=Math.round(-q-r);
+  const dq=Math.abs(rq-q),dr=Math.abs(rr-r),ds=Math.abs(rs-(-q-r));
+  if(dq>dr&&dq>ds) rq=-rr-rs; else if(dr>ds) rr=-rq-rs;
+  return {q:rq,r:rr};
+}
+function hk(q,r){return `${q},${r}`;}
+
+// ─────────────────────────────────────────────
+// STATE
+// ─────────────────────────────────────────────
+let hexes   = new Map();
+let ports   = [];
+let tool    = 'paint';
+let hexType = 'rand';
+let portType= 'rand';
+let hexSize = 40;
+let panX=0, panY=0;
+let isPanning=false, panStart=null;
+let isDragging=false;
+const svg = document.getElementById('board-svg');
+
+// ─────────────────────────────────────────────
+// COORD GENERATORS
+// ─────────────────────────────────────────────
+function hexagonCoords(radius){
+  const list=[];
+  for(let q=-radius;q<=radius;q++) for(let r=-radius;r<=radius;r++)
+    if(Math.max(Math.abs(q),Math.abs(r),Math.abs(-q-r))<=radius) list.push({q,r});
+  return list;
+}
+function gridCoords(w,h){
+  const coords=[], rOff=-Math.floor(h/2);
+  for(let ri=0;ri<h;ri++){
+    const r=ri+rOff, qOff=-Math.floor(w/2)-Math.floor(r/2);
+    for(let i=0;i<w;i++) coords.push({q:qOff+i,r});
+  }
+  return coords;
+}
+function island(cq,cr,radius=1){
+  return hexagonCoords(radius).map(c=>({q:c.q+cq,r:c.r+cr}));
+}
+function seaFill(landCoords, outerBorder=2){
+  const landSet=new Set(landCoords.map(c=>hk(c.q,c.r)));
+  const dist=new Map();
+  const q=[];
+  landCoords.forEach(c=>{dist.set(hk(c.q,c.r),0);q.push({q:c.q,r:c.r,d:0});});
+  let i=0;
+  while(i<q.length){
+    const {q:cq,r:cr,d}=q[i++];
+    if(d>=outerBorder) continue;
+    for(const [dq,dr] of HEX_DIRS){
+      const k=hk(cq+dq,cr+dr);
+      if(!dist.has(k)){dist.set(k,d+1);q.push({q:cq+dq,r:cr+dr,d:d+1});}
+    }
+  }
+  const all=[];
+  dist.forEach((d,k)=>{
+    const [q,r]=k.split(',').map(Number);
+    all.push({q,r,type:landSet.has(k)?'rand':'sea'});
+  });
+  return all;
+}
+
+// ─────────────────────────────────────────────
+// PRESETS
+// ─────────────────────────────────────────────
+const PRESETS = {
+  standard:         ()=>hexagonCoords(2).map(c=>({...c,type:'rand'})),
+  extended:         ()=>hexagonCoords(3).map(c=>({...c,type:'rand'})),
+  small:            ()=>hexagonCoords(1).map(c=>({...c,type:'rand'})),
+  fourIslands:      ()=>seaFill([...island(-4,-2),...island(3,-3),...island(-4,4),...island(3,3)],2),
+  twinIsles:        ()=>seaFill([...hexagonCoords(1),...hexagonCoords(1).map(c=>({q:c.q+5,r:c.r}))],2),
+  ringAtoll:        ()=>seaFill(hexagonCoords(2).filter(c=>Math.max(Math.abs(c.q),Math.abs(c.r),Math.abs(-c.q-c.r))===2),2),
+  headingForNewShores:()=>seaFill([...hexagonCoords(2),...island(5,-3),...island(3,4)],2),
+  wondersOfCatan:   ()=>seaFill([...hexagonCoords(2),...island(0,-5),...island(5,-2),...island(0,5),...island(-5,2)],2),
+};
+
+function loadPreset(name){
+  if(!PRESETS[name]) return;
+  hexes.clear(); ports=[];
+  PRESETS[name]().forEach(h=>hexes.set(hk(h.q,h.r),{q:h.q,r:h.r,type:h.type||'rand'}));
+  fitView(); render();
+}
+
+// ─────────────────────────────────────────────
+// BOARD OPS
+// ─────────────────────────────────────────────
+function makeGrid(){
+  const w=parseInt(document.getElementById('grid-w').value)||7;
+  const h=parseInt(document.getElementById('grid-h').value)||5;
+  if(hexes.size>0 && !confirm(`Create a ${w}×${h} grid? This clears the board.`)) return;
+  hexes.clear(); ports=[];
+  gridCoords(w,h).forEach(c=>hexes.set(hk(c.q,c.r),{q:c.q,r:c.r,type:'rand'}));
+  fitView(); render();
+}
+function clearBoard(){ if(confirm('Clear the board?')){ hexes.clear(); ports=[]; render(); } }
+function addHexRing(){
+  if(hexes.size===0){ hexes.set('0,0',{q:0,r:0,type:'sea'}); render(); return; }
+  const existing=new Set(hexes.keys());
+  const toAdd=[];
+  hexes.forEach(({q,r})=>{
+    for(const [dq,dr] of HEX_DIRS){
+      const k=hk(q+dq,r+dr);
+      if(!existing.has(k)&&!toAdd.some(h=>hk(h.q,h.r)===k)) toAdd.push({q:q+dq,r:r+dr,type:'sea'});
+    }
+  });
+  toAdd.forEach(h=>hexes.set(hk(h.q,h.r),h));
+  render();
+}
+function fillSeaGaps(){
+  const landCoords=[]; hexes.forEach(h=>{ if(h.type!=='sea') landCoords.push({q:h.q,r:h.r}); });
+  if(!landCoords.length) return;
+  const filled=seaFill(landCoords,2);
+  let added=0;
+  filled.forEach(h=>{ const k=hk(h.q,h.r); if(!hexes.has(k)){hexes.set(k,{q:h.q,r:h.r,type:'sea'});added++;} });
+  render();
+  if(added) alert(`Added ${added} sea hexes.`);
+  else alert('No gaps found.');
+}
+
+// ─────────────────────────────────────────────
+// VIEW
+// ─────────────────────────────────────────────
+function fitView(){
+  const el=svg.getBoundingClientRect();
+  const pts=[]; hexes.forEach(({q,r})=>pts.push(hexCenter(q,r,hexSize)));
+  if(!pts.length) return;
+  panX=el.width/2-(Math.min(...pts.map(p=>p.x))+Math.max(...pts.map(p=>p.x)))/2;
+  panY=el.height/2-(Math.min(...pts.map(p=>p.y))+Math.max(...pts.map(p=>p.y)))/2;
+}
+
+// ─────────────────────────────────────────────
+// RENDER
+// ─────────────────────────────────────────────
+const HEX_FILL={rand:'#253525',sea:'#1a4a7a',wood:'#2d6a2d',brick:'#8b3a1a',sheep:'#5a9e3a',wheat:'#c8a020',ore:'#4a4a6a',desert:'#b8a060',gold:'#c8900a',fog:'#2a3a4a'};
+const HEX_ICON={rand:'🎲',sea:'〜',wood:'🌲',brick:'🧱',sheep:'🐑',wheat:'🌾',ore:'⛏️',desert:'🏜️',gold:'💰',fog:'🌫️'};
+const PORT_STROKE={rand:'#4a7aaa','3:1':'#e8c040',wood:'#4aaa4a',brick:'#cc5522',sheep:'#88cc44',wheat:'#ddaa22',ore:'#6666aa'};
+const PORT_LABEL={rand:'⚓','3:1':'3:1',wood:'2:1🌲',brick:'2:1🧱',sheep:'2:1🐑',wheat:'2:1🌾',ore:'2:1⛏️'};
+
+function render(){
+  let out=`<g transform="translate(${panX.toFixed(1)},${panY.toFixed(1)})">`;
+
+  // Hexes
+  hexes.forEach(({q,r,type})=>{
+    const {x:cx,y:cy}=hexCenter(q,r,hexSize);
+    const crns=hexCorners(cx,cy,hexSize);
+    const pts=crns.map(p=>`${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+    const fill=HEX_FILL[type]||'#1e3a5f';
+    const icon=HEX_ICON[type]||'';
+    const showCoords=hexSize>=30;
+    out+=`<polygon points="${pts}" fill="${fill}" stroke="#0a1826" stroke-width="1.5" data-q="${q}" data-r="${r}" class="hex" style="cursor:pointer"/>`;
+    out+=`<text x="${cx.toFixed(1)}" y="${(cy+hexSize*.15).toFixed(1)}" text-anchor="middle" font-size="${(hexSize*.36).toFixed(0)}" fill="rgba(255,255,255,.75)" pointer-events="none">${icon}</text>`;
+    if(showCoords) out+=`<text x="${cx.toFixed(1)}" y="${(cy+hexSize*.68).toFixed(1)}" text-anchor="middle" font-size="8" fill="rgba(255,255,255,.3)" pointer-events="none">${q},${r}</text>`;
+  });
+
+  // Existing ports
+  ports.forEach(p=>{
+    if(!hexes.has(hk(p.q,p.r))) return;
+    const {x:cx,y:cy}=hexCenter(p.q,p.r,hexSize);
+    const crns=hexCorners(cx,cy,hexSize);
+    const a=crns[p.edgeIdx], b=crns[(p.edgeIdx+1)%6];
+    const mx=(a.x+b.x)/2, my=(a.y+b.y)/2;
+    out+=`<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="${PORT_STROKE[p.type]||'#ccc'}" stroke-width="5" stroke-linecap="round" pointer-events="none"/>`;
+    out+=`<text x="${mx.toFixed(1)}" y="${(my+3.5).toFixed(1)}" text-anchor="middle" font-size="8" fill="#fff" font-weight="bold" pointer-events="none">${PORT_LABEL[p.type]}</text>`;
+  });
+
+  // Port placement edges
+  if(tool==='port'){
+    hexes.forEach(({q,r,type})=>{
+      if(type==='sea') return;
+      const {x:cx,y:cy}=hexCenter(q,r,hexSize);
+      const crns=hexCorners(cx,cy,hexSize);
+      for(let i=0;i<6;i++){
+        const [dq,dr]=HEX_DIRS[i];
+        const nb=hexes.get(hk(q+dq,r+dr));
+        if((!nb||nb.type==='sea')&&!ports.find(p=>p.q===q&&p.r===r&&p.edgeIdx===i)){
+          const a=crns[i],b=crns[(i+1)%6];
+          out+=`<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="#fff" stroke-width="3" opacity=".3" stroke-dasharray="4,3" data-pq="${q}" data-pr="${r}" data-pe="${i}" class="pedge" style="cursor:pointer"/>`;
+        }
+      }
+    });
+  }
+
+  // Ghost add-hex candidates
+  if(tool==='add-hex'){
+    const seen=new Set();
+    hexes.forEach(({q,r})=>{
+      for(const [dq,dr] of HEX_DIRS){
+        const k=hk(q+dq,r+dr);
+        if(!hexes.has(k)&&!seen.has(k)){
+          seen.add(k);
+          const {x:cx,y:cy}=hexCenter(q+dq,r+dr,hexSize);
+          const crns=hexCorners(cx,cy,hexSize);
+          const pts=crns.map(p=>`${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+          out+=`<polygon points="${pts}" fill="rgba(255,255,255,.05)" stroke="rgba(255,255,255,.25)" stroke-width="1" stroke-dasharray="3,2" data-gq="${q+dq}" data-gr="${r+dr}" class="ghost" style="cursor:pointer"/>`;
+        }
+      }
+    });
+  }
+
+  out+='</g>';
+  svg.innerHTML=out;
+  attachEvents();
+  updateStats();
+}
+
+function updateStats(){
+  const counts={};
+  hexes.forEach(h=>{counts[h.type]=(counts[h.type]||0)+1;});
+  const order=['rand','sea','wood','brick','sheep','wheat','ore','desert','gold','fog'];
+  document.getElementById('stats').innerHTML=order.filter(t=>counts[t]).map(t=>`<div>${HEX_ICON[t]} ${t}: <b>${counts[t]}</b></div>`).join('');
+  document.getElementById('hex-count').textContent=hexes.size;
+  document.getElementById('port-count').textContent=ports.length;
+}
+
+// ─────────────────────────────────────────────
+// EVENTS
+// ─────────────────────────────────────────────
+function attachEvents(){
+  svg.querySelectorAll('.hex').forEach(el=>{
+    el.addEventListener('click', onHexClick);
+    el.addEventListener('mouseover', onHexHover);
+    if(tool==='paint'||tool==='del-hex') el.addEventListener('mousemove', onHexDrag);
+  });
+  svg.querySelectorAll('.pedge').forEach(el=>el.addEventListener('click', onPortEdgeClick));
+  svg.querySelectorAll('.ghost').forEach(el=>el.addEventListener('click', onGhostClick));
+}
+
+function onHexClick(e){
+  const q=parseInt(e.target.dataset.q), r=parseInt(e.target.dataset.r), k=hk(q,r);
+  if(tool==='paint'){ const h=hexes.get(k); if(h){h.type=hexType; render();} }
+  else if(tool==='del-hex'){ hexes.delete(k); ports=ports.filter(p=>!(p.q===q&&p.r===r)); render(); }
+  else if(tool==='del-port'){ ports=ports.filter(p=>!(p.q===q&&p.r===r)); render(); }
+}
+function onHexDrag(e){
+  if(!isDragging) return;
+  const q=parseInt(e.target.dataset.q), r=parseInt(e.target.dataset.r), h=hexes.get(hk(q,r));
+  if(h&&h.type!==hexType){ h.type=hexType; render(); }
+}
+function onHexHover(e){
+  const q=e.target.dataset.q, r=e.target.dataset.r, h=hexes.get(hk(parseInt(q),parseInt(r)));
+  if(h) document.getElementById('hover-info').textContent=`q:${q} r:${r} → ${HEX_ICON[h.type]||''} ${h.type||'?'}`;
+}
+function onPortEdgeClick(e){
+  const q=parseInt(e.target.dataset.pq),r=parseInt(e.target.dataset.pr),ei=parseInt(e.target.dataset.pe);
+  ports=ports.filter(p=>!(p.q===q&&p.r===r&&p.edgeIdx===ei));
+  ports.push({q,r,edgeIdx:ei,type:portType});
+  render();
+}
+function onGhostClick(e){
+  const q=parseInt(e.target.dataset.gq),r=parseInt(e.target.dataset.gr);
+  hexes.set(hk(q,r),{q,r,type:hexType}); render();
+}
+
+// Pan
+svg.addEventListener('mousedown',e=>{
+  if(tool==='pan'){ isPanning=true; panStart={x:e.clientX-panX,y:e.clientY-panY}; svg.style.cursor='grabbing'; return; }
+  if(tool==='paint'||tool==='del-hex') isDragging=true;
+});
+window.addEventListener('mousemove',e=>{
+  if(isPanning){ panX=e.clientX-panStart.x; panY=e.clientY-panStart.y; render(); }
+});
+window.addEventListener('mouseup',()=>{ isPanning=false; isDragging=false; if(tool==='pan') svg.style.cursor='grab'; });
+
+// Scroll to zoom — works everywhere on the canvas
+svg.addEventListener('wheel',e=>{
+  e.preventDefault();
+  // Zoom toward cursor position
+  const rect=svg.getBoundingClientRect();
+  const mx=e.clientX-rect.left, my=e.clientY-rect.top;
+  const delta=e.deltaY<0?1:-1;
+  const factor=delta>0?1.1:0.91;
+  const newSize=Math.max(12,Math.min(80,hexSize*factor));
+  // Adjust pan so the point under cursor stays fixed
+  panX=mx-(mx-panX)*(newSize/hexSize);
+  panY=my-(my-panY)*(newSize/hexSize);
+  hexSize=newSize;
+  document.getElementById('hex-size').value=Math.round(hexSize);
+  document.getElementById('hex-size-val').textContent=Math.round(hexSize);
+  render();
+},{passive:false});
+
+function onHexSizeChange(val){
+  hexSize=parseInt(val);
+  document.getElementById('hex-size-val').textContent=val;
+  render();
+}
+
+document.getElementById('map-preset').addEventListener('change',e=>{
+  if(e.target.value){loadPreset(e.target.value);e.target.value='';}
+});
+
+// ─────────────────────────────────────────────
+// TOOL / TYPE SETTERS
+// ─────────────────────────────────────────────
+function setTool(t){
+  tool=t;
+  document.querySelectorAll('.tool-btn').forEach(b=>b.classList.remove('active'));
+  document.getElementById('tool-'+t)?.classList.add('active');
+  document.getElementById('paint-panel').style.display=(t==='paint'||t==='add-hex')?'':'none';
+  document.getElementById('port-panel').style.display=t==='port'?'':'none';
+  const L={paint:'Paint',port:'Place Port','del-port':'Del Port','del-hex':'Del Hex','add-hex':'Add Hex',pan:'Pan'};
+  document.getElementById('tool-label').textContent=L[t]||t;
+  svg.style.cursor=t==='pan'?'grab':t==='del-hex'?'not-allowed':'crosshair';
+  render();
+}
+function setHexType(t){
+  hexType=t;
+  document.querySelectorAll('.swatch').forEach(s=>s.classList.remove('active'));
+  document.getElementById('type-'+t)?.classList.add('active');
+}
+function setPortType(t){
+  portType=t;
+  const ids={rand:'port-rand','3:1':'port-3to1',wood:'port-wood',brick:'port-brick',sheep:'port-sheep',wheat:'port-wheat',ore:'port-ore'};
+  document.querySelectorAll('.port-swatch').forEach(s=>s.classList.remove('active'));
+  document.getElementById(ids[t])?.classList.add('active');
+}
+function toggleRandomPorts(){
+  const on=document.getElementById('random-ports-cb').checked;
+  document.getElementById('random-ports-opts').style.display=on?'':'none';
+  document.getElementById('fixed-ports-hint').style.display=on?'none':'';
+  document.querySelectorAll('.port-swatch').forEach(s=>{s.style.opacity=on?'0.4':'1';s.style.pointerEvents=on?'none':'';});
+  render();
+}
+
+// ─────────────────────────────────────────────
+// SAVE TO GAME (iframe → parent postMessage)
+// ─────────────────────────────────────────────
+function saveToGame(){
+  const hexArr=[]; hexes.forEach(h=>hexArr.push(h));
+  const forcedTypes={};
+  hexArr.forEach(h=>{ if(h.type&&h.type!=='rand') forcedTypes[`${h.q},${h.r}`]=h.type; });
+  const randomPortsOn=document.getElementById('random-ports-cb').checked;
+  const randomPortCount=parseInt(document.getElementById('random-port-count').value)||9;
+  const def={
+    name: document.getElementById('map-name').value||'My Custom Map',
+    desc: document.getElementById('map-desc').value||'Custom board layout.',
+    coords: hexArr.map(h=>({q:h.q,r:h.r})),
+    forcedTypes,
+    hexSize: Math.round(hexSize),
+    desertCount: Math.max(1,Math.round(hexArr.filter(h=>!h.type||h.type==='rand').length/19)),
+    portCount: randomPortsOn?randomPortCount:undefined,
+    minP:2, maxP:6,
+  };
+  const id='custom_'+Date.now();
+  window.parent.postMessage({type:'landfall-save-map',id,def},'*');
+  alert(`✓ "${def.name}" sent to game!`);
+}
+
+// ─────────────────────────────────────────────
+// EXPORT / IMPORT
+// ─────────────────────────────────────────────
+function buildForcedTypes(){
+  const ft={};
+  hexes.forEach(h=>{ if(h.type&&h.type!=='rand') ft[`${h.q},${h.r}`]=h.type; });
+  return ft;
+}
+function exportCode(){
+  const hexArr=[]; hexes.forEach(h=>hexArr.push(h));
+  hexArr.sort((a,b)=>a.r!==b.r?a.r-b.r:a.q-b.q);
+  const ft=buildForcedTypes();
+  const randomPortsOn=document.getElementById('random-ports-cb').checked;
+  const randomPortCount=parseInt(document.getElementById('random-port-count').value)||9;
+  const mapName=document.getElementById('map-name').value||'My Custom Map';
+  const mapDesc=document.getElementById('map-desc').value||'Custom board layout.';
+  let code='// ── Sheer Con Board Editor Export ──\n';
+  code+=`// ${hexArr.length} hexes · ${ports.length} ports · hex size ${Math.round(hexSize)}\n\n`;
+  code+='function myCustomBoardCoords() {\n  return [\n';
+  hexArr.forEach(h=>{ code+=`    { q:${String(h.q).padStart(3)}, r:${String(h.r).padStart(3)} }, // ${HEX_ICON[h.type]||'?'} ${h.type}\n`; });
+  code+='  ];\n}\n\n';
+  if(Object.keys(ft).length){
+    code+='const myForcedTypes = {\n';
+    Object.entries(ft).forEach(([k,v])=>{ code+=`  "${k}": "${v}",\n`; });
+    code+='};\n\n';
+  }
+  if(!randomPortsOn&&ports.length){
+    code+='const myPorts = [\n';
+    ports.forEach(p=>{ const t=p.type==='rand'?'':`type:"${p.type}", `; code+=`  { q:${p.q}, r:${p.r}, edgeIdx:${p.edgeIdx}, ${t}},\n`; });
+    code+='];\n\n';
+  }
+  const portCountStr=randomPortsOn?`, portCount: ${randomPortCount}`:'';
+  code+=`// ── Add to MAPS in landfall.jsx ──\nmyCustomMap: {\n`;
+  code+=`  name: "${mapName}",\n  desc: "${mapDesc}",\n  minP: 2, maxP: 6,\n`;
+  code+=`  build: () => ({\n    coords: myCustomBoardCoords(),\n`;
+  if(Object.keys(ft).length) code+=`    forcedTypes: myForcedTypes,\n`;
+  code+=`    size: ${Math.round(hexSize)}, desertCount: ${Math.max(1,Math.round(hexArr.filter(h=>!h.type||h.type==='rand').length/19))}${portCountStr},\n  }),\n},`;
+  showModal('JSX Config Export',code);
+}
+function exportJSON(){
+  const hexArr=[]; hexes.forEach(h=>hexArr.push(h));
+  const data={hexes:hexArr,ports,hexSize:Math.round(hexSize),mapName:document.getElementById('map-name').value,mapDesc:document.getElementById('map-desc').value};
+  showModal('JSON (save for reimport)',JSON.stringify(data,null,2));
+}
+function importJSON(){
+  const raw=prompt('Paste your exported JSON:');
+  if(!raw) return;
+  try{
+    const data=JSON.parse(raw);
+    hexes.clear(); ports=[];
+    (data.hexes||[]).forEach(h=>hexes.set(hk(h.q,h.r),h));
+    ports=data.ports||[];
+    if(data.hexSize){hexSize=data.hexSize;document.getElementById('hex-size').value=hexSize;document.getElementById('hex-size-val').textContent=hexSize;}
+    if(data.mapName) document.getElementById('map-name').value=data.mapName;
+    if(data.mapDesc) document.getElementById('map-desc').value=data.mapDesc;
+    fitView(); render();
+  }catch(e){alert('Invalid JSON: '+e.message);}
+}
+function showModal(title,text){
+  document.getElementById('code-title').textContent=title;
+  document.getElementById('code-output').value=text;
+  document.getElementById('code-modal').classList.add('open');
+}
+function copyCode(){ navigator.clipboard.writeText(document.getElementById('code-output').value).then(()=>alert('Copied!')); }
+function closeModal(){ document.getElementById('code-modal').classList.remove('open'); }
+
+// ─────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────
+loadPreset('standard');
+window.addEventListener('resize',()=>{fitView();render();});
+</script>
+</body>
+</html>
