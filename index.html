@@ -5488,7 +5488,7 @@ function Board({
       x2: v2.x,
       y2: v2.y,
       stroke: "#1c1610",
-      strokeWidth: 8.5,
+      strokeWidth: boardHexSize * 0.185,
       strokeLinecap: "round"
     }), /*#__PURE__*/React.createElement("line", {
       x1: v1.x,
@@ -5496,7 +5496,7 @@ function Board({
       x2: v2.x,
       y2: v2.y,
       stroke: ownerColor,
-      strokeWidth: 6,
+      strokeWidth: boardHexSize * 0.13,
       strokeLinecap: "round"
     })) : /*#__PURE__*/React.createElement("line", {
       x1: v1.x,
@@ -5504,7 +5504,7 @@ function Board({
       x2: v2.x,
       y2: v2.y,
       stroke: valid ? validIsShip ? "var(--blue)" : "#b5502d" : "rgba(40,32,20,0.28)",
-      strokeWidth: valid ? 5 : 2.5,
+      strokeWidth: valid ? boardHexSize * 0.11 : boardHexSize * 0.055,
       strokeLinecap: "round",
       style: {
         pointerEvents: "none"
@@ -5546,7 +5546,8 @@ function Board({
       x: v.x,
       y: v.y,
       type: b.type,
-      color: ownerColor
+      color: ownerColor,
+      size: boardHexSize
     }), valid && b && /*#__PURE__*/React.createElement("circle", {
       cx: v.x,
       cy: v.y,
@@ -5699,6 +5700,7 @@ function HexDecor({
   hex
 }) {
   const s = hex.size;
+  const u = s / 46; // scale factor relative to standard hex size of 46
   const seed = hashStr(hex.id);
   const jitter = (n, range) => ((seed >> n) % 100 / 100 - 0.5) * range;
   const positions = [{
@@ -5718,13 +5720,13 @@ function HexDecor({
       key: i,
       opacity: op(0.55, i + 7)
     }, /*#__PURE__*/React.createElement("polygon", {
-      points: `${p.x},${p.y - 7} ${p.x - 5},${p.y + 3} ${p.x + 5},${p.y + 3}`,
+      points: `${p.x},${p.y - 7 * u} ${p.x - 5 * u},${p.y + 3 * u} ${p.x + 5 * u},${p.y + 3 * u}`,
       fill: "#1f3d1a"
     }), /*#__PURE__*/React.createElement("rect", {
-      x: p.x - 1,
-      y: p.y + 3,
-      width: 2,
-      height: 4,
+      x: p.x - 1 * u,
+      y: p.y + 3 * u,
+      width: 2 * u,
+      height: 4 * u,
       fill: "#3a2414"
     }))));
   }
@@ -5733,23 +5735,23 @@ function HexDecor({
       key: i,
       opacity: op(0.5, i + 7),
       stroke: "#5a1f00",
-      strokeWidth: 0.9,
+      strokeWidth: 0.9 * u,
       fill: "none"
     }, /*#__PURE__*/React.createElement("rect", {
-      x: p.x - 6,
-      y: p.y - 3,
-      width: 5,
-      height: 3
+      x: p.x - 6 * u,
+      y: p.y - 3 * u,
+      width: 5 * u,
+      height: 3 * u
     }), /*#__PURE__*/React.createElement("rect", {
       x: p.x,
-      y: p.y - 3,
-      width: 5,
-      height: 3
+      y: p.y - 3 * u,
+      width: 5 * u,
+      height: 3 * u
     }), /*#__PURE__*/React.createElement("rect", {
-      x: p.x - 3,
+      x: p.x - 3 * u,
       y: p.y,
-      width: 5,
-      height: 3
+      width: 5 * u,
+      height: 3 * u
     }))));
   }
   if (r === "sheep") {
@@ -5757,19 +5759,19 @@ function HexDecor({
       key: i,
       opacity: op(0.65, i + 7)
     }, /*#__PURE__*/React.createElement("circle", {
-      cx: p.x - 4,
+      cx: p.x - 4 * u,
       cy: p.y,
-      r: 3.2,
+      r: 3.2 * u,
       fill: "#f5f0e0"
     }), /*#__PURE__*/React.createElement("circle", {
       cx: p.x,
-      cy: p.y - 2,
-      r: 3.6,
+      cy: p.y - 2 * u,
+      r: 3.6 * u,
       fill: "#f5f0e0"
     }), /*#__PURE__*/React.createElement("circle", {
-      cx: p.x + 4,
+      cx: p.x + 4 * u,
       cy: p.y,
-      r: 3.2,
+      r: 3.2 * u,
       fill: "#f5f0e0"
     }))));
   }
@@ -5778,40 +5780,40 @@ function HexDecor({
       key: i,
       opacity: op(0.65, i + 7),
       stroke: "#6b4a10",
-      strokeWidth: 1,
+      strokeWidth: u,
       strokeLinecap: "round"
     }, /*#__PURE__*/React.createElement("line", {
       x1: p.x,
-      y1: p.y + 5,
+      y1: p.y + 5 * u,
       x2: p.x,
-      y2: p.y - 5
+      y2: p.y - 5 * u
     }), /*#__PURE__*/React.createElement("line", {
       x1: p.x,
-      y1: p.y - 3,
-      x2: p.x - 3,
-      y2: p.y - 6
+      y1: p.y - 3 * u,
+      x2: p.x - 3 * u,
+      y2: p.y - 6 * u
     }), /*#__PURE__*/React.createElement("line", {
       x1: p.x,
-      y1: p.y - 3,
-      x2: p.x + 3,
-      y2: p.y - 6
-    }), /*#__PURE__*/React.createElement("line", {
-      x1: p.x,
-      y1: p.y,
-      x2: p.x - 3,
-      y2: p.y - 3
+      y1: p.y - 3 * u,
+      x2: p.x + 3 * u,
+      y2: p.y - 6 * u
     }), /*#__PURE__*/React.createElement("line", {
       x1: p.x,
       y1: p.y,
-      x2: p.x + 3,
-      y2: p.y - 3
+      x2: p.x - 3 * u,
+      y2: p.y - 3 * u
+    }), /*#__PURE__*/React.createElement("line", {
+      x1: p.x,
+      y1: p.y,
+      x2: p.x + 3 * u,
+      y2: p.y - 3 * u
     }))));
   }
   if (r === "ore") {
     return /*#__PURE__*/React.createElement(React.Fragment, null, positions.map((p, i) => /*#__PURE__*/React.createElement("polygon", {
       key: i,
       opacity: op(0.55, i + 7),
-      points: `${p.x - 5},${p.y + 4} ${p.x - 2},${p.y - 5} ${p.x + 2},${p.y - 2} ${p.x + 5},${p.y + 4}`,
+      points: `${p.x - 5 * u},${p.y + 4 * u} ${p.x - 2 * u},${p.y - 5 * u} ${p.x + 2 * u},${p.y - 2 * u} ${p.x + 5 * u},${p.y + 4 * u}`,
       fill: "#3a4147"
     })));
   }
@@ -5820,23 +5822,23 @@ function HexDecor({
       key: i,
       opacity: op(0.5, i + 7),
       stroke: "#7a6420",
-      strokeWidth: 2,
+      strokeWidth: 2 * u,
       strokeLinecap: "round"
     }, /*#__PURE__*/React.createElement("line", {
       x1: p.x,
-      y1: p.y + 5,
+      y1: p.y + 5 * u,
       x2: p.x,
-      y2: p.y - 5
+      y2: p.y - 5 * u
     }), /*#__PURE__*/React.createElement("line", {
       x1: p.x,
-      y1: p.y - 1,
-      x2: p.x - 4,
-      y2: p.y - 4
+      y1: p.y - 1 * u,
+      x2: p.x - 4 * u,
+      y2: p.y - 4 * u
     }), /*#__PURE__*/React.createElement("line", {
       x1: p.x,
-      y1: p.y + 1,
-      x2: p.x + 4,
-      y2: p.y - 2
+      y1: p.y + 1 * u,
+      x2: p.x + 4 * u,
+      y2: p.y - 2 * u
     }))));
   }
   return null;
@@ -5865,7 +5867,7 @@ function HexTile({
     points: points,
     fill: `url(#hexfill-${hex.resource})`,
     stroke: "#241c12",
-    strokeWidth: 1.5,
+    strokeWidth: Math.max(0.5, hex.size * 0.032),
     opacity: clickable ? 0.8 : 1
   }), !hasCustomImage && /*#__PURE__*/React.createElement("polygon", {
     points: points,
@@ -5949,28 +5951,28 @@ function HexTile({
     preserveAspectRatio: "xMidYMid slice",
     clipPath: "inset(0 round 11px)"
   }), /*#__PURE__*/React.createElement("rect", {
-    x: hex.cx - 21,
-    y: hex.cy - 16,
-    width: 42,
-    height: 32,
-    rx: 11,
+    x: hex.cx - hex.size * 0.46,
+    y: hex.cy - hex.size * 0.35,
+    width: hex.size * 0.92,
+    height: hex.size * 0.7,
+    rx: hex.size * 0.24,
     fill: "none",
     stroke: "#241c12",
-    strokeWidth: 1.2
+    strokeWidth: hex.size * 0.026
   }), /*#__PURE__*/React.createElement("line", {
-    x1: hex.cx - 15,
-    y1: hex.cy + 3,
-    x2: hex.cx + 15,
-    y2: hex.cy + 3,
+    x1: hex.cx - hex.size * 0.33,
+    y1: hex.cy + hex.size * 0.065,
+    x2: hex.cx + hex.size * 0.33,
+    y2: hex.cy + hex.size * 0.065,
     stroke: "#241c12",
-    strokeWidth: 0.6,
+    strokeWidth: hex.size * 0.013,
     opacity: 0.35
   }), /*#__PURE__*/React.createElement("text", {
     x: hex.cx,
-    y: hex.cy - 1,
+    y: hex.cy - hex.size * 0.02,
     textAnchor: "middle",
     fontFamily: "'Fraunces', serif",
-    fontSize: 13,
+    fontSize: hex.size * 0.28,
     fontWeight: 800,
     fill: hot ? "#ff4a3d" : "#1a1206",
     style: {
@@ -5983,14 +5985,14 @@ function HexTile({
   }).map((_, i) => /*#__PURE__*/React.createElement("circle", {
     key: i,
     cx: dotStartX + i * dotSpacing,
-    cy: hex.cy + 4.5,
-    r: 0.85,
+    cy: hex.cy + hex.size * 0.1,
+    r: hex.size * 0.018,
     fill: hot ? "#ff4a3d" : "#f4e5b8"
   })), /*#__PURE__*/React.createElement("text", {
     x: hex.cx,
-    y: hex.cy + 12.5,
+    y: hex.cy + hex.size * 0.27,
     textAnchor: "middle",
-    fontSize: 6.4,
+    fontSize: hex.size * 0.14,
     fontWeight: 700,
     letterSpacing: 0.2,
     fill: "#f4e5b8",
@@ -6000,72 +6002,75 @@ function HexTile({
       strokeWidth: 0.8
     }
   }, cityName)), !hex.number && cityName && /*#__PURE__*/React.createElement("g", null, /*#__PURE__*/React.createElement("rect", {
-    x: hex.cx - 20,
-    y: hex.cy - 6,
-    width: 40,
-    height: 12,
-    rx: 6,
+    x: hex.cx - hex.size * 0.44,
+    y: hex.cy - hex.size * 0.13,
+    width: hex.size * 0.87,
+    height: hex.size * 0.26,
+    rx: hex.size * 0.13,
     fill: "rgba(20,12,6,0.82)",
     stroke: "#241c12",
-    strokeWidth: 1
+    strokeWidth: hex.size * 0.022
   }), /*#__PURE__*/React.createElement("text", {
     x: hex.cx,
-    y: hex.cy + 3,
+    y: hex.cy + hex.size * 0.065,
     textAnchor: "middle",
-    fontSize: 7,
+    fontSize: hex.size * 0.15,
     fontWeight: 700,
     fill: "#f2e8d0"
   }, cityName)), isRobber && /*#__PURE__*/React.createElement(RobberIcon, {
     cx: hex.cx,
-    cy: hex.cy - (hex.number ? 24 : 0),
-    isPirate: hex.resource === "sea"
+    cy: hex.cy - (hex.number ? hex.size * 0.52 : 0),
+    isPirate: hex.resource === "sea",
+    size: hex.size
   }));
 }
 function RobberIcon({
   cx,
   cy,
-  isPirate
+  isPirate,
+  size = 46
 }) {
+  const u = size / 46;
   if (isPirate) {
     return /*#__PURE__*/React.createElement("g", null, /*#__PURE__*/React.createElement("ellipse", {
       cx: cx,
-      cy: cy + 6,
-      rx: 9,
-      ry: 3,
+      cy: cy + 6 * u,
+      rx: 9 * u,
+      ry: 3 * u,
       fill: "rgba(0,0,0,0.25)"
     }), /*#__PURE__*/React.createElement("path", {
-      d: `M ${cx - 9} ${cy + 4} Q ${cx} ${cy + 9} ${cx + 9} ${cy + 4} L ${cx + 7} ${cy + 1} L ${cx - 7} ${cy + 1} Z`,
+      d: `M ${cx - 9 * u} ${cy + 4 * u} Q ${cx} ${cy + 9 * u} ${cx + 9 * u} ${cy + 4 * u} L ${cx + 7 * u} ${cy + 1 * u} L ${cx - 7 * u} ${cy + 1 * u} Z`,
       fill: "#241c12"
     }), /*#__PURE__*/React.createElement("line", {
       x1: cx,
-      y1: cy + 1,
+      y1: cy + 1 * u,
       x2: cx,
-      y2: cy - 11,
+      y2: cy - 11 * u,
       stroke: "#241c12",
-      strokeWidth: 1.4
+      strokeWidth: 1.4 * u
     }), /*#__PURE__*/React.createElement("polygon", {
-      points: `${cx},${cy - 11} ${cx + 7},${cy - 3} ${cx},${cy - 3}`,
+      points: `${cx},${cy - 11 * u} ${cx + 7 * u},${cy - 3 * u} ${cx},${cy - 3 * u}`,
       fill: "#7a1f0a",
       stroke: "#241c12",
-      strokeWidth: 0.6
+      strokeWidth: 0.6 * u
     }));
   }
   return /*#__PURE__*/React.createElement("g", null, /*#__PURE__*/React.createElement("ellipse", {
     cx: cx,
-    cy: cy + 7,
-    rx: 7,
-    ry: 3,
+    cy: cy + 7 * u,
+    rx: 7 * u,
+    ry: 3 * u,
     fill: "rgba(0,0,0,0.25)"
   }), /*#__PURE__*/React.createElement("path", {
-    d: `M ${cx - 6} ${cy + 7} Q ${cx - 6} ${cy - 3} ${cx} ${cy - 3} Q ${cx + 6} ${cy - 3} ${cx + 6} ${cy + 7} Z`,
+    d: `M ${cx - 6 * u} ${cy + 7 * u} Q ${cx - 6 * u} ${cy - 3 * u} ${cx} ${cy - 3 * u} Q ${cx + 6 * u} ${cy - 3 * u} ${cx + 6 * u} ${cy + 7 * u} Z`,
     fill: "#241c12"
   }), /*#__PURE__*/React.createElement("circle", {
     cx: cx,
-    cy: cy - 7,
-    r: 4.5,
+    cy: cy - 7 * u,
+    r: 4.5 * u,
     fill: "#241c12"
   }), /*#__PURE__*/React.createElement("path", {
-    d: `M ${cx - 5} ${cy - 9} Q ${cx} ${cy - 15} ${cx + 5} ${cy - 9} Z`,
+    d: `M ${cx - 5 * u} ${cy - 9 * u} Q ${cx} ${cy - 15 * u} ${cx + 5 * u} ${cy - 9 * u} Z`,
     fill: "#241c12"
   }));
 }
@@ -6073,60 +6078,62 @@ function BuildingIcon({
   x,
   y,
   type,
-  color
+  color,
+  size = 46
 }) {
+  const u = size / 46;
   if (type === "city") {
     return /*#__PURE__*/React.createElement("g", null, /*#__PURE__*/React.createElement("rect", {
-      x: x - 9,
-      y: y + 2,
-      width: 18,
-      height: 7,
+      x: x - 9 * u,
+      y: y + 2 * u,
+      width: 18 * u,
+      height: 7 * u,
       fill: color,
       stroke: "#1a140d",
-      strokeWidth: 1.1
+      strokeWidth: 1.1 * u
     }), /*#__PURE__*/React.createElement("path", {
-      d: `M ${x - 9} ${y + 2} L ${x - 9} ${y - 5} L ${x - 5} ${y - 9} L ${x - 1} ${y - 5} L ${x - 1} ${y + 2} Z`,
+      d: `M ${x - 9 * u} ${y + 2 * u} L ${x - 9 * u} ${y - 5 * u} L ${x - 5 * u} ${y - 9 * u} L ${x - 1 * u} ${y - 5 * u} L ${x - 1 * u} ${y + 2 * u} Z`,
       fill: color,
       stroke: "#1a140d",
-      strokeWidth: 1.1
+      strokeWidth: 1.1 * u
     }), /*#__PURE__*/React.createElement("path", {
-      d: `M ${x + 1} ${y + 2} L ${x + 1} ${y - 8} L ${x + 5} ${y - 13} L ${x + 9} ${y - 8} L ${x + 9} ${y + 2} Z`,
+      d: `M ${x + 1 * u} ${y + 2 * u} L ${x + 1 * u} ${y - 8 * u} L ${x + 5 * u} ${y - 13 * u} L ${x + 9 * u} ${y - 8 * u} L ${x + 9 * u} ${y + 2 * u} Z`,
       fill: color,
       stroke: "#1a140d",
-      strokeWidth: 1.1
+      strokeWidth: 1.1 * u
     }), /*#__PURE__*/React.createElement("line", {
-      x1: x + 5,
-      y1: y - 13,
-      x2: x + 5,
-      y2: y - 18,
+      x1: x + 5 * u,
+      y1: y - 13 * u,
+      x2: x + 5 * u,
+      y2: y - 18 * u,
       stroke: "#1a140d",
-      strokeWidth: 1
+      strokeWidth: u
     }), /*#__PURE__*/React.createElement("polygon", {
-      points: `${x + 5},${y - 18} ${x + 9.5},${y - 15.5} ${x + 5},${y - 13}`,
+      points: `${x + 5 * u},${y - 18 * u} ${x + 9.5 * u},${y - 15.5 * u} ${x + 5 * u},${y - 13 * u}`,
       fill: "#f2f278",
       stroke: "#1a140d",
-      strokeWidth: 0.6
+      strokeWidth: 0.6 * u
     }), /*#__PURE__*/React.createElement("rect", {
-      x: x - 8,
-      y: y + 3,
-      width: 2,
-      height: 2.5,
+      x: x - 8 * u,
+      y: y + 3 * u,
+      width: 2 * u,
+      height: 2.5 * u,
       fill: "#1a140d",
       opacity: 0.4
     }), /*#__PURE__*/React.createElement("rect", {
-      x: x + 6,
-      y: y + 3,
-      width: 2,
-      height: 2.5,
+      x: x + 6 * u,
+      y: y + 3 * u,
+      width: 2 * u,
+      height: 2.5 * u,
       fill: "#1a140d",
       opacity: 0.4
     }));
   }
   return /*#__PURE__*/React.createElement("path", {
-    d: `M ${x - 6.5} ${y + 6.5} L ${x - 6.5} ${y - 1} L ${x} ${y - 7.5} L ${x + 6.5} ${y - 1} L ${x + 6.5} ${y + 6.5} Z`,
+    d: `M ${x - 6.5 * u} ${y + 6.5 * u} L ${x - 6.5 * u} ${y - 1 * u} L ${x} ${y - 7.5 * u} L ${x + 6.5 * u} ${y - 1 * u} L ${x + 6.5 * u} ${y + 6.5 * u} Z`,
     fill: color,
     stroke: "#1a140d",
-    strokeWidth: 1.2
+    strokeWidth: 1.2 * u
   });
 }
 function Banner({
