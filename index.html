@@ -3393,7 +3393,7 @@ function Landfall() {
     }, "Loading…"));
   }
   if (!code) {
-    return /*#__PURE__*/React.createElement(Home, {
+    return /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement(Home, {
       lastCode: lastCode,
       onResume: () => setCode(lastCode),
       mode: mode,
@@ -3501,8 +3501,18 @@ function Landfall() {
         } catch (e) {
           alert("Couldn't find that game.");
         }
-      }
-    });
+      },
+      devMode: devMode,
+      toggleDevMode: toggleDevMode,
+      onOpenDevPanel: () => setHomeDevPanel(true)
+    }), homeDevPanel && /*#__PURE__*/React.createElement(DevPanel, {
+      theme: theme,
+      setTheme: setTheme,
+      customTheme: customTheme,
+      saveCustomTheme: saveCustomTheme,
+      toggleDevMode: toggleDevMode,
+      onClose: () => setHomeDevPanel(false)
+    }));
   }
   if (!state) {
     return /*#__PURE__*/React.createElement(Shell, {
@@ -4042,7 +4052,10 @@ function Home({
   onJoin,
   onSpectate,
   lastCode,
-  onResume
+  onResume,
+  devMode,
+  toggleDevMode,
+  onOpenDevPanel
 }) {
   return /*#__PURE__*/React.createElement(Shell, {
     theme: theme,
@@ -4071,12 +4084,22 @@ function Home({
   }, /*#__PURE__*/React.createElement("img", {
     src: EMBEDDED_IMAGES.logo_sheercon,
     alt: "Sheer Con",
+    onClick: () => {
+      const next = parseInt(sessionStorage.getItem("lf-logo-clicks") || "0") + 1;
+      sessionStorage.setItem("lf-logo-clicks", next);
+      if (next >= 5) {
+        sessionStorage.removeItem("lf-logo-clicks");
+        toggleDevMode(true);
+      }
+    },
+    title: "...",
     style: {
       display: "block",
       width: 156,
       height: 180,
       margin: "0 auto 6px",
-      filter: "drop-shadow(0 6px 14px rgba(0,0,0,0.55))"
+      filter: "drop-shadow(0 6px 14px rgba(0,0,0,0.55))",
+      cursor: "pointer"
     }
   }), /*#__PURE__*/React.createElement("h1", {
     style: {
@@ -4113,7 +4136,10 @@ function Home({
   }, "Join with a code"), /*#__PURE__*/React.createElement(Btn, {
     variant: "ghost",
     onClick: () => setMode("solo")
-  }, "Play solo vs AI")), mode === "create" && /*#__PURE__*/React.createElement("div", {
+  }, "Play solo vs AI"), devMode && /*#__PURE__*/React.createElement(Btn, {
+    variant: "ghost",
+    onClick: onOpenDevPanel
+  }, "🛠️ Dev Tools")), mode === "create" && /*#__PURE__*/React.createElement("div", {
     className: "lf-setup-grid"
   }, /*#__PURE__*/React.createElement("div", {
     className: "lf-setup-col-main"
@@ -7130,6 +7156,7 @@ function DevTabMaps({
     id: "saved",
     label: "Saved"
   }];
+  const EDITOR_BG = "#0d1b2a";
   const btnStyle = active => ({
     padding: "5px 10px",
     borderRadius: 6,
@@ -7153,16 +7180,35 @@ function DevTabMaps({
   });
   return /*#__PURE__*/React.createElement("div", {
     style: {
+      position: "fixed",
+      inset: 0,
+      zIndex: 300,
+      background: EDITOR_BG,
       display: "flex",
       flexDirection: "column",
-      gap: 8,
-      height: 480,
       overflow: "hidden"
     }
   }, /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
-      gap: 4
+      alignItems: "center",
+      gap: 12,
+      padding: "10px 16px",
+      borderBottom: "1px solid #1e3a5f",
+      background: "#111e2e",
+      flexShrink: 0
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontWeight: 700,
+      fontSize: 15,
+      color: "#f7edd3"
+    }
+  }, "🗺️ Board Editor"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 4,
+      marginLeft: 8
     }
   }, editorTabs.map(t => /*#__PURE__*/React.createElement("button", {
     key: t.id,
@@ -7170,11 +7216,27 @@ function DevTabMaps({
     onClick: () => setActiveEditorTab(t.id)
   }, t.label))), /*#__PURE__*/React.createElement("div", {
     style: {
+      flex: 1
+    }
+  }), /*#__PURE__*/React.createElement("button", {
+    onClick: onClose,
+    style: {
+      background: "none",
+      border: "1px solid #5a4a3a",
+      color: "#f7edd3",
+      borderRadius: 6,
+      padding: "5px 12px",
+      cursor: "pointer",
+      fontSize: 12
+    }
+  }, "✕ Close Editor")), /*#__PURE__*/React.createElement("div", {
+    style: {
       display: "flex",
       gap: 8,
       flex: 1,
       overflow: "hidden",
-      minHeight: 0
+      minHeight: 0,
+      padding: 8
     }
   }, activeEditorTab !== "saved" && /*#__PURE__*/React.createElement("svg", {
     ref: svgRef,
