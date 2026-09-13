@@ -5635,7 +5635,7 @@ function Board({
     onClick: () => handleHexClick(h.id),
     clickable: needsRobberMove,
     cityName: cityByHex[`${h.q},${h.r}`],
-    hasCustomImage: !!hexImages[h.resource]
+    hasCustomImage: false
   })), board.ports.map((p, i) => {
     const v1 = board.vertices.find(v => v.id === p.vertexIds[0]);
     const v2 = board.vertices.find(v => v.id === p.vertexIds[1]);
@@ -5723,9 +5723,9 @@ function Board({
       fill: `url(#portFaceGlow-${i})`
     }), /*#__PURE__*/React.createElement("text", {
       x: ox,
-      y: oy + badgeR * 0.32,
+      y: oy + badgeR * 0.38,
       textAnchor: "middle",
-      fontSize: badgeR * 1.0
+      fontSize: Math.max(8, badgeR * 1.1)
     }, portIcon), /*#__PURE__*/React.createElement("circle", {
       cx: ox,
       cy: oy,
@@ -5735,8 +5735,8 @@ function Board({
       strokeWidth: badgeR * 0.08
     }), /*#__PURE__*/React.createElement("text", {
       x: ox,
-      y: oy + badgeR + boardHexSize * 0.18,
-      fontSize: Math.max(6, boardHexSize * 0.18),
+      y: oy + badgeR * 1.1 + boardHexSize * 0.2,
+      fontSize: Math.max(7, boardHexSize * 0.22),
       textAnchor: "middle",
       fontWeight: 800,
       fill: "#f2e8d0",
