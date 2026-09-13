@@ -3110,6 +3110,75 @@ function makePlayer(id, name, color, isBot, icon, botStyle) {
     stateFrozen: false
   };
 }
+
+// ── Custom maps stored in localStorage by the board editor ──
+function loadCustomMaps() {
+  try {
+    const raw = localStorage.getItem("landfall-custom-maps");
+    if (!raw) return {};
+    const stored = JSON.parse(raw);
+    const result = {};
+    Object.entries(stored).forEach(([id, def]) => {
+      result[id] = {
+        name: def.name,
+        desc: def.desc,
+        minP: def.minP || 2,
+        maxP: def.maxP || 6,
+        isCustom: true,
+        build: () => {
+          const filled = {
+            coords: def.coords,
+            forcedTypes: def.forcedTypes || {}
+          };
+          return {
+            coords: filled.coords,
+            forcedTypes: filled.forcedTypes,
+            size: def.hexSize || 40,
+            desertCount: def.desertCount || 1,
+            portCount: def.portCount || undefined
+          };
+        }
+      };
+    });
+    return result;
+  } catch (e) {
+    return {};
+  }
+}
+function saveCustomMap(id, def) {
+  try {
+    const raw = localStorage.getItem("landfall-custom-maps");
+    const stored = raw ? JSON.parse(raw) : {};
+    stored[id] = def;
+    localStorage.setItem("landfall-custom-maps", JSON.stringify(stored));
+    // Merge into live MAPS so it shows immediately without reload
+    MAPS[id] = {
+      name: def.name,
+      desc: def.desc,
+      minP: def.minP || 2,
+      maxP: def.maxP || 6,
+      isCustom: true,
+      build: () => ({
+        coords: def.coords,
+        forcedTypes: def.forcedTypes || {},
+        size: def.hexSize || 40,
+        desertCount: def.desertCount || 1,
+        portCount: def.portCount || undefined
+      })
+    };
+  } catch (e) {}
+}
+function deleteCustomMap(id) {
+  try {
+    const raw = localStorage.getItem("landfall-custom-maps");
+    const stored = raw ? JSON.parse(raw) : {};
+    delete stored[id];
+    delete MAPS[id];
+    localStorage.setItem("landfall-custom-maps", JSON.stringify(stored));
+  } catch (e) {}
+}
+// Inject custom maps into MAPS at load time
+Object.assign(MAPS, loadCustomMaps());
 function createNewGame(hostId, hostName, maxPlayers, mapId = "standard", options = {}, hostColor = null, hostIcon = null, mapOpts = {}) {
   const map = MAPS[mapId] || MAPS.standard;
   const built = map.build(maxPlayers, mapOpts);
@@ -6664,6 +6733,775 @@ function TopBar({
     onClose: () => setDevPanelOpen(false)
   }));
 }
+function DevTabMaps({
+  onClose
+}) {
+  const HEX_DIRS = [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]];
+  const HEX_FILL_COLORS = {
+    rand: "#253525",
+    sea: "#1a4a7a",
+    wood: "#2d6a2d",
+    brick: "#8b3a1a",
+    sheep: "#5a9e3a",
+    wheat: "#c8a020",
+    ore: "#4a4a6a",
+    desert: "#b8a060",
+    gold: "#c8900a",
+    fog: "#2a3a4a"
+  };
+  const HEX_ICONS = {
+    rand: "🎲",
+    sea: "〜",
+    wood: "🌲",
+    brick: "🧱",
+    sheep: "🐑",
+    wheat: "🌾",
+    ore: "⛏️",
+    desert: "🏜️",
+    gold: "💰",
+    fog: "🌫️"
+  };
+  const PORT_STROKE = {
+    rand: "#4a7aaa",
+    "3:1": "#e8c040",
+    wood: "#4aaa4a",
+    brick: "#cc5522",
+    sheep: "#88cc44",
+    wheat: "#ddaa22",
+    ore: "#6666aa"
+  };
+  const PORT_LABEL = {
+    rand: "⚓",
+    "3:1": "3:1",
+    wood: "2:1🌲",
+    brick: "2:1🧱",
+    sheep: "2:1🐑",
+    wheat: "2:1🌾",
+    ore: "2:1⛏️"
+  };
+  const ALL_HEX_TYPES = ["rand", "sea", "wood", "brick", "sheep", "wheat", "ore", "desert", "gold", "fog"];
+  const ALL_PORT_TYPES = ["rand", "3:1", "wood", "brick", "sheep", "wheat", "ore"];
+
+  // ── State ──
+  const [hexes, setHexes] = useState(() => {
+    const m = new Map();
+    hexagonCoords(2).forEach(c => m.set(`${c.q},${c.r}`, {
+      q: c.q,
+      r: c.r,
+      type: "rand"
+    }));
+    return m;
+  });
+  const [ports, setPorts] = useState([]);
+  const [tool, setTool] = useState("paint");
+  const [hexType, setHexType] = useState("rand");
+  const [portType, setPortType] = useState("rand");
+  const [hexSize, setHexSize] = useState(32);
+  const [pan, setPan] = useState({
+    x: 220,
+    y: 180
+  });
+  const [mapName, setMapName] = useState("My Custom Map");
+  const [mapDesc, setMapDesc] = useState("Custom board layout.");
+  const [randomPorts, setRandomPorts] = useState(false);
+  const [portCount, setPortCount] = useState(9);
+  const [savedMaps, setSavedMaps] = useState(() => {
+    try {
+      const r = localStorage.getItem("landfall-custom-maps");
+      return r ? JSON.parse(r) : {};
+    } catch (e) {
+      return {};
+    }
+  });
+  const [activeEditorTab, setActiveEditorTab] = useState("paint");
+  const [gridW, setGridW] = useState(7);
+  const [gridH, setGridH] = useState(5);
+  const svgRef = useRef(null);
+  const panRef = useRef(null);
+
+  // ── Hex math ──
+  function hexCtr(q, r, sz) {
+    return {
+      x: sz * Math.sqrt(3) * (q + r / 2),
+      y: sz * 1.5 * r
+    };
+  }
+  function hexCrns(cx, cy, sz) {
+    return Array.from({
+      length: 6
+    }, (_, i) => {
+      const a = Math.PI / 180 * (60 * i - 30);
+      return {
+        x: cx + sz * Math.cos(a),
+        y: cy + sz * Math.sin(a)
+      };
+    });
+  }
+  function pxToHex(px, py, sz) {
+    const q = (px * Math.sqrt(3) / 3 - py / 3) / sz,
+      r = py * 2 / 3 / sz;
+    let rq = Math.round(q),
+      rr = Math.round(r),
+      rs = Math.round(-q - r);
+    const dq = Math.abs(rq - q),
+      dr = Math.abs(rr - r),
+      ds = Math.abs(rs - (-q - r));
+    if (dq > dr && dq > ds) rq = -rr - rs;else if (dr > ds) rr = -rq - rs;
+    return {
+      q: rq,
+      r: rr
+    };
+  }
+  function hk(q, r) {
+    return `${q},${r}`;
+  }
+
+  // ── Board ops ──
+  function makeGrid() {
+    const m = new Map(),
+      rOff = -Math.floor(gridH / 2);
+    for (let ri = 0; ri < gridH; ri++) {
+      const r = ri + rOff,
+        qOff = -Math.floor(gridW / 2) - Math.floor(r / 2);
+      for (let i = 0; i < gridW; i++) m.set(hk(qOff + i, r), {
+        q: qOff + i,
+        r,
+        type: "rand"
+      });
+    }
+    setHexes(m);
+    setPorts([]);
+  }
+  function loadPresetEditor(name) {
+    const m = new Map();
+    const coords = name === "standard" ? hexagonCoords(2) : name === "extended" ? hexagonCoords(3) : name === "small" ? hexagonCoords(1) : hexagonCoords(2);
+    coords.forEach(c => m.set(hk(c.q, c.r), {
+      q: c.q,
+      r: c.r,
+      type: "rand"
+    }));
+    setHexes(m);
+    setPorts([]);
+  }
+  function fillSeaGaps() {
+    const landCoords = [];
+    hexes.forEach(h => {
+      if (h.type !== "sea") landCoords.push({
+        q: h.q,
+        r: h.r
+      });
+    });
+    if (!landCoords.length) return;
+    const dist = new Map();
+    const q2 = [];
+    landCoords.forEach(c => {
+      dist.set(hk(c.q, c.r), 0);
+      q2.push({
+        q: c.q,
+        r: c.r,
+        d: 0
+      });
+    });
+    let i = 0;
+    while (i < q2.length) {
+      const {
+        q,
+        r,
+        d
+      } = q2[i++];
+      if (d >= 2) continue;
+      for (const [dq, dr] of HEX_DIRS) {
+        const k = hk(q + dq, r + dr);
+        if (!dist.has(k)) {
+          dist.set(k, d + 1);
+          q2.push({
+            q: q + dq,
+            r: r + dr,
+            d: d + 1
+          });
+        }
+      }
+    }
+    setHexes(prev => {
+      const m = new Map(prev);
+      dist.forEach((_, k) => {
+        if (!m.has(k)) {
+          const [q, r] = k.split(",").map(Number);
+          m.set(k, {
+            q,
+            r,
+            type: "sea"
+          });
+        }
+      });
+      return m;
+    });
+  }
+
+  // ── SVG click handler ──
+  function onSvgClick(e) {
+    if (tool === "pan") return;
+    const rect = svgRef.current.getBoundingClientRect();
+    const px = e.clientX - rect.left - pan.x,
+      py = e.clientY - rect.top - pan.y;
+    const {
+      q,
+      r
+    } = pxToHex(px, py, hexSize);
+    const k = hk(q, r);
+    if (tool === "paint") {
+      setHexes(prev => {
+        const m = new Map(prev);
+        if (m.has(k)) {
+          m.get(k).type = hexType;
+          return new Map(m);
+        }
+        return prev;
+      });
+    } else if (tool === "del-hex") {
+      setHexes(prev => {
+        const m = new Map(prev);
+        m.delete(k);
+        return m;
+      });
+      setPorts(prev => prev.filter(p => !(p.q === q && p.r === r)));
+    } else if (tool === "add-hex") {
+      if (!hexes.has(k)) {
+        setHexes(prev => {
+          const m = new Map(prev);
+          m.set(k, {
+            q,
+            r,
+            type: hexType
+          });
+          return m;
+        });
+      }
+    }
+  }
+  function onPortEdgeClick(q, r, ei, e) {
+    e.stopPropagation();
+    setPorts(prev => {
+      const next = prev.filter(p => !(p.q === q && p.r === r && p.edgeIdx === ei));
+      next.push({
+        q,
+        r,
+        edgeIdx: ei,
+        type: portType
+      });
+      return next;
+    });
+  }
+
+  // ── Save to game ──
+  function saveToGame() {
+    const id = "custom_" + Date.now();
+    const hexArr = [];
+    hexes.forEach(h => hexArr.push(h));
+    const forcedTypes = {};
+    hexArr.forEach(h => {
+      if (h.type && h.type !== "rand") forcedTypes[`${h.q},${h.r}`] = h.type;
+    });
+    const def = {
+      name: mapName,
+      desc: mapDesc,
+      coords: hexArr.map(h => ({
+        q: h.q,
+        r: h.r
+      })),
+      forcedTypes,
+      hexSize,
+      desertCount: Math.max(1, Math.round(hexArr.filter(h => h.type === "rand" || !h.type).length / 19)),
+      portCount: randomPorts ? portCount : undefined,
+      minP: 2,
+      maxP: 6
+    };
+    saveCustomMap(id, def);
+    setSavedMaps(prev => ({
+      ...prev,
+      [id]: def
+    }));
+    alert(`✓ "${mapName}" saved! It now appears in the map picker.`);
+  }
+  function deleteMap(id) {
+    if (!confirm("Delete this custom map?")) return;
+    deleteCustomMap(id);
+    setSavedMaps(prev => {
+      const n = {
+        ...prev
+      };
+      delete n[id];
+      return n;
+    });
+  }
+
+  // ── Render SVG ──
+  const svgContent = useMemo(() => {
+    let out = `<g transform="translate(${pan.x},${pan.y})">`;
+    hexes.forEach(({
+      q,
+      r,
+      type
+    }) => {
+      const {
+        x: cx,
+        y: cy
+      } = hexCtr(q, r, hexSize);
+      const crns = hexCrns(cx, cy, hexSize);
+      const pts = crns.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+      const fill = HEX_FILL_COLORS[type] || "#1e3a5f";
+      out += `<polygon points="${pts}" fill="${fill}" stroke="#0d1b2a" stroke-width="1.2"/>`;
+      out += `<text x="${cx.toFixed(1)}" y="${(cy + 4).toFixed(1)}" text-anchor="middle" font-size="${(hexSize * 0.35).toFixed(0)}" fill="rgba(255,255,255,.7)">${HEX_ICONS[type] || ""}</text>`;
+    });
+    ports.forEach(p => {
+      if (!hexes.has(hk(p.q, p.r))) return;
+      const {
+        x: cx,
+        y: cy
+      } = hexCtr(p.q, p.r, hexSize);
+      const crns = hexCrns(cx, cy, hexSize);
+      const a = crns[p.edgeIdx],
+        b = crns[(p.edgeIdx + 1) % 6];
+      const mx = (a.x + b.x) / 2,
+        my = (a.y + b.y) / 2;
+      out += `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="${PORT_STROKE[p.type] || "#ccc"}" stroke-width="4" stroke-linecap="round"/>`;
+      out += `<text x="${mx.toFixed(1)}" y="${(my + 3).toFixed(1)}" text-anchor="middle" font-size="7" fill="#fff" font-weight="bold">${PORT_LABEL[p.type]}</text>`;
+    });
+    if (tool === "port") {
+      hexes.forEach(({
+        q,
+        r,
+        type
+      }) => {
+        if (type === "sea") return;
+        const {
+          x: cx,
+          y: cy
+        } = hexCtr(q, r, hexSize);
+        const crns = hexCrns(cx, cy, hexSize);
+        for (let i = 0; i < 6; i++) {
+          const [dq, dr] = HEX_DIRS[i];
+          const nb = hexes.get(hk(q + dq, r + dr));
+          if (!nb || nb.type === "sea") {
+            const exists = ports.find(p => p.q === q && p.r === r && p.edgeIdx === i);
+            if (!exists) {
+              const a = crns[i],
+                b = crns[(i + 1) % 6];
+              out += `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="#fff" stroke-width="2.5" opacity=".3" stroke-dasharray="4,3" data-pq="${q}" data-pr="${r}" data-pe="${i}"/>`;
+            }
+          }
+        }
+      });
+    }
+    if (tool === "add-hex") {
+      const seen = new Set();
+      hexes.forEach(({
+        q,
+        r
+      }) => {
+        for (const [dq, dr] of HEX_DIRS) {
+          const k = hk(q + dq, r + dr);
+          if (!hexes.has(k) && !seen.has(k)) {
+            seen.add(k);
+            const {
+              x: cx,
+              y: cy
+            } = hexCtr(q + dq, r + dr, hexSize);
+            const crns = hexCrns(cx, cy, hexSize);
+            const pts = crns.map(p => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+            out += `<polygon points="${pts}" fill="rgba(255,255,255,.06)" stroke="rgba(255,255,255,.25)" stroke-width="1" stroke-dasharray="3,2"/>`;
+          }
+        }
+      });
+    }
+    out += "</g>";
+    return out;
+  }, [hexes, ports, tool, pan, hexSize]);
+  const editorTabs = [{
+    id: "paint",
+    label: "Paint"
+  }, {
+    id: "ports",
+    label: "Ports"
+  }, {
+    id: "board",
+    label: "Board"
+  }, {
+    id: "saved",
+    label: "Saved"
+  }];
+  const btnStyle = active => ({
+    padding: "5px 10px",
+    borderRadius: 6,
+    border: active ? "2px solid var(--gold)" : "1px solid #8a7a55",
+    background: active ? "rgba(232,182,76,0.18)" : "rgba(0,0,0,0.2)",
+    color: "#f7edd3",
+    cursor: "pointer",
+    fontSize: 11,
+    fontWeight: active ? 700 : 400
+  });
+  const typeStyle = (active, color) => ({
+    padding: "5px 4px",
+    borderRadius: 5,
+    border: active ? "2px solid #f0c040" : "1px solid #2a4a6a",
+    background: color || "#192a3e",
+    color: "#fff",
+    cursor: "pointer",
+    fontSize: 10,
+    textAlign: "center",
+    textShadow: "0 1px 2px #000"
+  });
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 8,
+      height: 480,
+      overflow: "hidden"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 4
+    }
+  }, editorTabs.map(t => /*#__PURE__*/React.createElement("button", {
+    key: t.id,
+    style: btnStyle(activeEditorTab === t.id),
+    onClick: () => setActiveEditorTab(t.id)
+  }, t.label))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 8,
+      flex: 1,
+      overflow: "hidden",
+      minHeight: 0
+    }
+  }, activeEditorTab !== "saved" && /*#__PURE__*/React.createElement("svg", {
+    ref: svgRef,
+    onClick: onSvgClick,
+    onClick: e => {
+      // handle port edge clicks via data attrs
+      const el = e.target;
+      if (el.dataset.pq !== undefined) {
+        onPortEdgeClick(parseInt(el.dataset.pq), parseInt(el.dataset.pr), parseInt(el.dataset.pe), e);
+        return;
+      }
+      onSvgClick(e);
+    },
+    style: {
+      flex: 1,
+      background: "#0d1b2a",
+      borderRadius: 8,
+      cursor: tool === "pan" ? "grab" : "crosshair",
+      minWidth: 0
+    },
+    dangerouslySetInnerHTML: {
+      __html: svgContent
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      width: 160,
+      display: "flex",
+      flexDirection: "column",
+      gap: 8,
+      overflowY: "auto",
+      fontSize: 11
+    }
+  }, activeEditorTab === "paint" && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: "#a89a7e",
+      fontSize: 10,
+      textTransform: "uppercase",
+      letterSpacing: 1
+    }
+  }, "Tool"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: 3
+    }
+  }, [["paint", "🎨 Paint"], ["add-hex", "➕ Add"], ["del-hex", "🗑️ Del Hex"], ["port", "⚓ Port"], ["pan", "✋ Pan"]].map(([t, l]) => /*#__PURE__*/React.createElement("button", {
+    key: t,
+    style: {
+      ...btnStyle(tool === t),
+      fontSize: 10,
+      padding: "4px 2px"
+    },
+    onClick: () => setTool(t)
+  }, l))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: "#a89a7e",
+      fontSize: 10,
+      textTransform: "uppercase",
+      letterSpacing: 1,
+      marginTop: 4
+    }
+  }, "Hex Type"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: 3
+    }
+  }, ALL_HEX_TYPES.map(t => /*#__PURE__*/React.createElement("div", {
+    key: t,
+    style: typeStyle(hexType === t, HEX_FILL_COLORS[t]),
+    onClick: () => setHexType(t)
+  }, HEX_ICONS[t], /*#__PURE__*/React.createElement("br", null), t))), tool === "port" && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: "#a89a7e",
+      fontSize: 10,
+      textTransform: "uppercase",
+      letterSpacing: 1,
+      marginTop: 4
+    }
+  }, "Port Type"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "1fr 1fr",
+      gap: 3
+    }
+  }, ALL_PORT_TYPES.map(t => /*#__PURE__*/React.createElement("div", {
+    key: t,
+    style: typeStyle(portType === t, null),
+    onClick: () => setPortType(t)
+  }, PORT_LABEL[t]))))), activeEditorTab === "ports" && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: "#a89a7e",
+      fontSize: 10,
+      textTransform: "uppercase",
+      letterSpacing: 1
+    }
+  }, "Port Settings"), /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 6,
+      cursor: "pointer",
+      color: "#c0d4e8"
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "checkbox",
+    checked: randomPorts,
+    onChange: e => setRandomPorts(e.target.checked),
+    style: {
+      accentColor: "#2e86c1"
+    }
+  }), "Random port placement"), randomPorts && /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      gap: 6
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: "#8ab0cc",
+      flex: 1
+    }
+  }, "Port count"), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    value: portCount,
+    min: 1,
+    max: 20,
+    onChange: e => setPortCount(parseInt(e.target.value) || 9),
+    style: {
+      width: 44,
+      background: "#192a3e",
+      border: "1px solid #1e3a5f",
+      color: "#fff",
+      borderRadius: 4,
+      padding: "2px 4px",
+      fontSize: 11
+    }
+  })), !randomPorts && /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: "#5a7a9a",
+      fontSize: 10,
+      lineHeight: 1.4
+    }
+  }, "Switch to Paint → ⚓ Port tool to place fixed ports on coastal edges.")), activeEditorTab === "board" && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: "#a89a7e",
+      fontSize: 10,
+      textTransform: "uppercase",
+      letterSpacing: 1
+    }
+  }, "New Grid"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 4,
+      alignItems: "center"
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    value: gridW,
+    min: 1,
+    max: 25,
+    onChange: e => setGridW(parseInt(e.target.value) || 7),
+    style: {
+      width: 40,
+      background: "#192a3e",
+      border: "1px solid #1e3a5f",
+      color: "#fff",
+      borderRadius: 4,
+      padding: "2px 4px",
+      fontSize: 11
+    }
+  }), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: "#8ab0cc"
+    }
+  }, "×"), /*#__PURE__*/React.createElement("input", {
+    type: "number",
+    value: gridH,
+    min: 1,
+    max: 25,
+    onChange: e => setGridH(parseInt(e.target.value) || 5),
+    style: {
+      width: 40,
+      background: "#192a3e",
+      border: "1px solid #1e3a5f",
+      color: "#fff",
+      borderRadius: 4,
+      padding: "2px 4px",
+      fontSize: 11
+    }
+  })), /*#__PURE__*/React.createElement("button", {
+    style: btnStyle(false),
+    onClick: makeGrid
+  }, "Create Grid"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: "#a89a7e",
+      fontSize: 10,
+      textTransform: "uppercase",
+      letterSpacing: 1,
+      marginTop: 4
+    }
+  }, "Presets"), ["standard", "extended", "small"].map(p => /*#__PURE__*/React.createElement("button", {
+    key: p,
+    style: btnStyle(false),
+    onClick: () => loadPresetEditor(p)
+  }, p)), /*#__PURE__*/React.createElement("button", {
+    style: btnStyle(false),
+    onClick: fillSeaGaps
+  }, "Fill Sea Gaps"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: "#a89a7e",
+      fontSize: 10,
+      textTransform: "uppercase",
+      letterSpacing: 1,
+      marginTop: 4
+    }
+  }, "Zoom"), /*#__PURE__*/React.createElement("input", {
+    type: "range",
+    min: 16,
+    max: 60,
+    value: hexSize,
+    onChange: e => setHexSize(parseInt(e.target.value)),
+    style: {
+      accentColor: "#2e86c1"
+    }
+  })), activeEditorTab !== "saved" && /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: "auto",
+      paddingTop: 8,
+      borderTop: "1px solid rgba(255,255,255,.1)",
+      display: "flex",
+      flexDirection: "column",
+      gap: 5
+    }
+  }, /*#__PURE__*/React.createElement("input", {
+    value: mapName,
+    onChange: e => setMapName(e.target.value),
+    placeholder: "Map name",
+    style: {
+      background: "#192a3e",
+      border: "1px solid #1e3a5f",
+      color: "#fff",
+      borderRadius: 4,
+      padding: "4px 6px",
+      fontSize: 11,
+      width: "100%"
+    }
+  }), /*#__PURE__*/React.createElement("textarea", {
+    value: mapDesc,
+    onChange: e => setMapDesc(e.target.value),
+    rows: 2,
+    placeholder: "Description…",
+    style: {
+      background: "#192a3e",
+      border: "1px solid #1e3a5f",
+      color: "#fff",
+      borderRadius: 4,
+      padding: "4px 6px",
+      fontSize: 10,
+      width: "100%",
+      resize: "none"
+    }
+  }), /*#__PURE__*/React.createElement("button", {
+    onClick: saveToGame,
+    style: {
+      background: "#1a5a2a",
+      color: "#aaffaa",
+      border: "none",
+      borderRadius: 6,
+      padding: "7px",
+      fontSize: 12,
+      fontWeight: 700,
+      cursor: "pointer"
+    }
+  }, "💾 Save to Game")), activeEditorTab === "saved" && /*#__PURE__*/React.createElement("div", {
+    style: {
+      flex: 1,
+      display: "flex",
+      flexDirection: "column",
+      gap: 6,
+      overflowY: "auto"
+    }
+  }, Object.keys(savedMaps).length === 0 && /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: "#5a7a9a",
+      fontSize: 11
+    }
+  }, "No custom maps saved yet. Build one and hit 💾 Save to Game."), Object.entries(savedMaps).map(([id, def]) => /*#__PURE__*/React.createElement("div", {
+    key: id,
+    style: {
+      background: "rgba(0,0,0,.2)",
+      borderRadius: 7,
+      padding: "8px 10px",
+      border: "1px solid #2a4a6a"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontWeight: 700,
+      color: "#f7edd3",
+      fontSize: 12
+    }
+  }, "✏️ ", def.name), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: "#a89a7e",
+      fontSize: 10,
+      marginTop: 2
+    }
+  }, def.desc), /*#__PURE__*/React.createElement("div", {
+    style: {
+      color: "#5a8fc0",
+      fontSize: 10,
+      marginTop: 2
+    }
+  }, def.coords?.length || 0, " hexes · ", def.portCount ? "random ports" : "fixed ports"), /*#__PURE__*/React.createElement("button", {
+    onClick: () => deleteMap(id),
+    style: {
+      marginTop: 6,
+      background: "#5a1a1a",
+      color: "#ffaaaa",
+      border: "none",
+      borderRadius: 4,
+      padding: "3px 8px",
+      fontSize: 10,
+      cursor: "pointer"
+    }
+  }, "🗑️ Delete")))))));
+}
 function DevPanel({
   theme,
   setTheme,
@@ -6736,6 +7574,9 @@ function DevPanel({
   }, {
     id: "music",
     label: "Music"
+  }, {
+    id: "maps",
+    label: "🗺️ Maps"
   }];
   return /*#__PURE__*/React.createElement("div", {
     onClick: onClose,
@@ -6812,7 +7653,9 @@ function DevPanel({
     updateHexColor: updateHexColor,
     resetHexColors: resetHexColors,
     loadFromTheme: loadFromTheme
-  }), activeTab === "sounds" && /*#__PURE__*/React.createElement(DevTabSounds, null), activeTab === "music" && /*#__PURE__*/React.createElement(DevTabMusic, null), /*#__PURE__*/React.createElement("div", {
+  }), activeTab === "sounds" && /*#__PURE__*/React.createElement(DevTabSounds, null), activeTab === "music" && /*#__PURE__*/React.createElement(DevTabMusic, null), activeTab === "maps" && /*#__PURE__*/React.createElement(DevTabMaps, {
+    onClose: onClose
+  }), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
       gap: 8,
