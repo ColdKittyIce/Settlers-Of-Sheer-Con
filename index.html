@@ -3593,23 +3593,24 @@ function Shell({
     ...base,
     ...customTheme
   } : base;
+  const fallback = THEMES.sheercon;
   const cssVars = {
-    "--cream": t.cream,
-    "--ink": t.ink,
-    "--wood": t.wood,
-    "--rust": t.rust,
-    "--rust-dark": t.rustDark,
-    "--gold": t.gold,
-    "--glow": t.glow,
-    "--panel": t.panel,
-    "--panel2": t.panel2,
-    "--ok": t.ok,
-    "--bad": t.bad,
-    "--blue": t.blue,
-    "--bg1": t.bg1,
-    "--bg2": t.bg2,
-    "--menu-bg-a": t.menuBgA || t.panel,
-    "--menu-bg-b": t.menuBgB || t.panel2
+    "--cream": t.cream || fallback.cream,
+    "--ink": t.ink || fallback.ink,
+    "--wood": t.wood || fallback.wood,
+    "--rust": t.rust || fallback.rust,
+    "--rust-dark": t.rustDark || fallback.rustDark,
+    "--gold": t.gold || fallback.gold,
+    "--glow": t.glow || fallback.glow,
+    "--panel": t.panel || fallback.panel,
+    "--panel2": t.panel2 || fallback.panel2,
+    "--ok": t.ok || fallback.ok,
+    "--bad": t.bad || fallback.bad,
+    "--blue": t.blue || fallback.blue,
+    "--bg1": t.bg1 || fallback.bg1,
+    "--bg2": t.bg2 || fallback.bg2,
+    "--menu-bg-a": t.menuBgA || t.panel || fallback.panel,
+    "--menu-bg-b": t.menuBgB || t.panel2 || fallback.panel2
   };
   return /*#__PURE__*/React.createElement("div", {
     className: "lf-root",
@@ -3631,9 +3632,6 @@ function Shell({
           height: 100dvh;
           max-height: 100vh;
           max-height: 100dvh;
-          --cream: #e7daca; --ink: #1f1006; --wood: #7a4a21; --rust: #b73f00; --rust-dark: #7a2900; --gold: #efb93c; --glow: #f2f278;
-          --panel: rgba(28,14,6,0.85); --panel2: rgba(48,22,10,0.9);
-          --ok: #5cb85c; --bad: #d9534f; --blue: #4a9fd8;
         }
         .lf-root * { box-sizing: border-box; }
         .lf-root button { font-family: inherit; cursor: pointer; }
@@ -3901,6 +3899,99 @@ function OptionRow({
     }
   }, opt.label))));
 }
+function Toggle({
+  label,
+  value,
+  onChange,
+  hint
+}) {
+  return /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 10,
+      cursor: "pointer",
+      padding: "6px 0"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 12,
+      color: "#d9c0a4"
+    }
+  }, label, hint && /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: "#a89a7e",
+      fontSize: 10,
+      marginLeft: 6
+    }
+  }, hint)), /*#__PURE__*/React.createElement("div", {
+    onClick: () => onChange(!value),
+    style: {
+      width: 38,
+      height: 20,
+      borderRadius: 10,
+      flexShrink: 0,
+      background: value ? "var(--gold)" : "rgba(255,255,255,0.15)",
+      position: "relative",
+      transition: "background .2s"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "absolute",
+      top: 2,
+      left: value ? 20 : 2,
+      width: 16,
+      height: 16,
+      borderRadius: "50%",
+      background: "#fff",
+      transition: "left .2s",
+      boxShadow: "0 1px 3px rgba(0,0,0,0.4)"
+    }
+  })));
+}
+function DropRow({
+  label,
+  value,
+  options,
+  onChange
+}) {
+  return /*#__PURE__*/React.createElement("label", {
+    style: {
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "space-between",
+      gap: 8,
+      padding: "4px 0"
+    }
+  }, /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 12,
+      color: "#d9c0a4",
+      flexShrink: 0
+    }
+  }, label), /*#__PURE__*/React.createElement("select", {
+    value: value,
+    onChange: e => {
+      const raw = e.target.value;
+      const opt = options.find(o => String(o.value) === raw);
+      onChange(opt ? opt.value : raw);
+    },
+    style: {
+      background: "rgba(0,0,0,0.4)",
+      border: "1px solid rgba(255,255,255,0.2)",
+      color: "#f7edd3",
+      borderRadius: 6,
+      padding: "4px 8px",
+      fontSize: 11,
+      cursor: "pointer",
+      maxWidth: 180
+    }
+  }, options.map(o => /*#__PURE__*/React.createElement("option", {
+    key: String(o.value),
+    value: String(o.value)
+  }, o.label))));
+}
 function OptionsPicker({
   optionsDraft,
   setOptionsDraft
@@ -3913,20 +4004,31 @@ function OptionsPicker({
     style: {
       display: "flex",
       flexDirection: "column",
-      gap: 10
+      background: "rgba(0,0,0,0.2)",
+      borderRadius: 10,
+      padding: "10px 14px",
+      gap: 2
     }
-  }, /*#__PURE__*/React.createElement(OptionRow, {
-    label: "Victory points to win",
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      textTransform: "uppercase",
+      letterSpacing: 1,
+      color: "#a89a7e",
+      marginBottom: 4
+    }
+  }, "Game Rules"), /*#__PURE__*/React.createElement(DropRow, {
+    label: "Victory points",
     value: optionsDraft.winVp,
     options: [8, 10, 12, 15].map(v => ({
       value: v,
-      label: String(v)
+      label: `${v} VP`
     })),
     onChange: v => set({
-      winVp: v
+      winVp: Number(v)
     })
-  }), /*#__PURE__*/React.createElement(OptionRow, {
-    label: "Discard limit on a 7",
+  }), /*#__PURE__*/React.createElement(DropRow, {
+    label: "Discard limit",
     value: optionsDraft.discardLimit,
     options: [{
       value: 7,
@@ -3939,22 +4041,22 @@ function OptionsPicker({
       label: "No limit"
     }],
     onChange: v => set({
-      discardLimit: v
+      discardLimit: Number(v)
     })
-  }), /*#__PURE__*/React.createElement(OptionRow, {
+  }), /*#__PURE__*/React.createElement(DropRow, {
     label: "Robber",
     value: optionsDraft.friendlyRobber,
     options: [{
       value: false,
-      label: "Standard (steals a card)"
+      label: "Standard — steals"
     }, {
       value: true,
-      label: "Friendly (blocks only)"
+      label: "Friendly — blocks only"
     }],
     onChange: v => set({
-      friendlyRobber: v
+      friendlyRobber: v === "true" || v === true
     })
-  }), /*#__PURE__*/React.createElement(OptionRow, {
+  }), /*#__PURE__*/React.createElement(DropRow, {
     label: "Turn timer",
     value: optionsDraft.turnTimerSec,
     options: [{
@@ -3971,76 +4073,60 @@ function OptionsPicker({
       label: "120s"
     }],
     onChange: v => set({
-      turnTimerSec: v
+      turnTimerSec: Number(v)
     })
-  }), /*#__PURE__*/React.createElement(OptionRow, {
-    label: "Seafarers (ships)",
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      borderTop: "1px solid rgba(255,255,255,0.08)",
+      margin: "6px 0"
+    }
+  }), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      textTransform: "uppercase",
+      letterSpacing: 1,
+      color: "#a89a7e",
+      marginBottom: 2
+    }
+  }, "House Rules"), /*#__PURE__*/React.createElement(Toggle, {
+    label: "Ships (Seafarers)",
     value: optionsDraft.seafarers ?? true,
-    options: [{
-      value: true,
-      label: "On — build ships to cross water"
-    }, {
-      value: false,
-      label: "Off"
-    }],
     onChange: v => set({
       seafarers: v
-    })
-  }), /*#__PURE__*/React.createElement(OptionRow, {
+    }),
+    hint: "build ships to cross water"
+  }), /*#__PURE__*/React.createElement(Toggle, {
     label: "Allow undo",
     value: optionsDraft.allowUndo ?? false,
-    options: [{
-      value: true,
-      label: "On — undo your last placement"
-    }, {
-      value: false,
-      label: "Off"
-    }],
     onChange: v => set({
       allowUndo: v
-    })
-  }), /*#__PURE__*/React.createElement(OptionRow, {
-    label: "Megalopolis card (house rule)",
+    }),
+    hint: "undo last placement"
+  }), /*#__PURE__*/React.createElement(Toggle, {
+    label: "Megalopolis card",
     value: optionsDraft.megalopolis ?? false,
-    options: [{
-      value: true,
-      label: "On — adds a dev card: free city + road, anywhere"
-    }, {
-      value: false,
-      label: "Off"
-    }],
     onChange: v => set({
       megalopolis: v
-    })
-  }), /*#__PURE__*/React.createElement(OptionRow, {
-    label: "Communist Cuba mode",
+    }),
+    hint: "free city + road dev card"
+  }), /*#__PURE__*/React.createElement(Toggle, {
+    label: "Communist Cuba",
     value: optionsDraft.communistCuba ?? false,
-    options: [{
-      value: false,
-      label: "Off"
-    }, {
-      value: true,
-      label: "On — the State collects, redistributes, and taxes"
-    }],
     onChange: v => set({
       communistCuba: v
-    })
+    }),
+    hint: "the State taxes & redistributes"
   }), optionsDraft.communistCuba && /*#__PURE__*/React.createElement("div", {
     style: {
-      fontSize: 11,
+      fontSize: 10,
       color: "#a89a7e",
       padding: "4px 8px",
       background: "rgba(232,182,76,0.08)",
       borderLeft: "3px solid var(--gold)",
-      borderRadius: 4
+      borderRadius: 4,
+      marginTop: 4
     }
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      fontWeight: 700,
-      color: "var(--gold)",
-      marginBottom: 3
-    }
-  }, "How the State works"), /*#__PURE__*/React.createElement("div", null, "• On a 7, discards go into a State pool and are redistributed evenly to all players (remainder returns to the bank). The Traitor still steals — a snitch's cut."), /*#__PURE__*/React.createElement("div", null, "• Every 4 rounds, the State collects half of every player's cards (rounded down) and redistributes."), /*#__PURE__*/React.createElement("div", null, "• If you have nothing to give on 2 consecutive tax cycles, all your production freezes until you pay 3 cards to the State.")));
+  }, "On a 7: discards pool → redistributed evenly. Every 4 rounds: half your cards go to the State. Miss 2 cycles: production freezes until you pay 3 cards."));
 }
 function Home({
   mode,
@@ -4190,16 +4276,14 @@ function Home({
     onChange: setTheme
   })), /*#__PURE__*/React.createElement(Field, {
     label: "Max players"
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      gap: 8
-    }
-  }, [3, 4, 5, 6].map(n => /*#__PURE__*/React.createElement("button", {
+  }, /*#__PURE__*/React.createElement("select", {
+    value: maxPlayersDraft,
+    onChange: e => setMaxPlayersDraft(Number(e.target.value)),
+    style: selectStyle
+  }, [3, 4, 5, 6].map(n => /*#__PURE__*/React.createElement("option", {
     key: n,
-    onClick: () => setMaxPlayersDraft(n),
-    style: pillStyle(maxPlayersDraft === n)
-  }, n)))), /*#__PURE__*/React.createElement(OptionsPicker, {
+    value: n
+  }, n, " players")))), /*#__PURE__*/React.createElement(OptionsPicker, {
     optionsDraft: optionsDraft,
     setOptionsDraft: setOptionsDraft
   }), /*#__PURE__*/React.createElement("p", {
@@ -4249,59 +4333,29 @@ function Home({
     value: theme,
     onChange: setTheme
   })), /*#__PURE__*/React.createElement(Field, {
-    label: "Number of AI opponents"
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      gap: 8
-    }
-  }, [1, 2, 3, 4, 5].map(n => /*#__PURE__*/React.createElement("button", {
+    label: "AI opponents"
+  }, /*#__PURE__*/React.createElement("select", {
+    value: aiCountDraft,
+    onChange: e => setAiCountDraft(Number(e.target.value)),
+    style: selectStyle
+  }, [1, 2, 3, 4, 5].map(n => /*#__PURE__*/React.createElement("option", {
     key: n,
-    onClick: () => setAiCountDraft(n),
-    style: pillStyle(aiCountDraft === n)
-  }, n)))), /*#__PURE__*/React.createElement(Field, {
+    value: n
+  }, n, " opponent", n > 1 ? "s" : "")))), /*#__PURE__*/React.createElement(Field, {
     label: "AI play style"
-  }, /*#__PURE__*/React.createElement("div", {
-    style: {
-      display: "flex",
-      gap: 8,
-      flexWrap: "wrap"
-    }
-  }, [{
-    value: "easy",
-    label: "Easy",
-    hint: "trades freely"
-  }, {
-    value: "balanced",
-    label: "Balanced",
-    hint: ""
-  }, {
-    value: "aggressive",
-    label: "Aggressive",
-    hint: "robs & holds firm"
-  }, {
-    value: "random",
-    label: "Random",
-    hint: ""
-  }].map(opt => /*#__PURE__*/React.createElement("button", {
-    key: opt.value,
-    onClick: () => setBotStyleDraft(opt.value),
-    style: {
-      ...pillStyle(botStyleDraft === opt.value),
-      flex: "1 1 auto"
-    }
-  }, opt.label))), /*#__PURE__*/React.createElement("p", {
-    style: {
-      fontSize: 11,
-      color: "#a89a7e",
-      margin: "4px 0 0"
-    }
-  }, {
-    easy: "Bots propose trades often and accept generous offers.",
-    balanced: "A reasonable mix of building, trading, and defense.",
-    aggressive: "Bots trade rarely, target you with the robber, and hold out for fair deals.",
-    random: "Bots make wildly unpredictable choices."
-  }[botStyleDraft])), /*#__PURE__*/React.createElement(OptionsPicker, {
+  }, /*#__PURE__*/React.createElement("select", {
+    value: botStyleDraft,
+    onChange: e => setBotStyleDraft(e.target.value),
+    style: selectStyle
+  }, /*#__PURE__*/React.createElement("option", {
+    value: "easy"
+  }, "Easy — trades freely"), /*#__PURE__*/React.createElement("option", {
+    value: "balanced"
+  }, "Balanced"), /*#__PURE__*/React.createElement("option", {
+    value: "aggressive"
+  }, "Aggressive — robs & holds firm"), /*#__PURE__*/React.createElement("option", {
+    value: "random"
+  }, "Random — unpredictable"))), /*#__PURE__*/React.createElement(OptionsPicker, {
     optionsDraft: optionsDraft,
     setOptionsDraft: setOptionsDraft
   }), /*#__PURE__*/React.createElement(Btn, {
@@ -4537,6 +4591,16 @@ function Field({
     }
   }, label, children);
 }
+const selectStyle = {
+  background: "rgba(0,0,0,0.4)",
+  border: "1px solid rgba(255,255,255,0.2)",
+  color: "#f7edd3",
+  borderRadius: 8,
+  padding: "7px 10px",
+  fontSize: 13,
+  width: "100%",
+  cursor: "pointer"
+};
 const inputStyle = {
   padding: "10px 12px",
   borderRadius: 9,
@@ -4912,6 +4976,13 @@ function Board({
   toggleDevMode
 }) {
   const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({
+    x: 0,
+    y: 0
+  });
+  const [isPanning, setIsPanning] = useState(false);
+  const panStartRef = useRef(null);
+  const boardContainerRef = useRef(null);
   const [selectedTrade, setSelectedTrade] = useState(false);
   const [selectedDev, setSelectedDev] = useState(false);
   const [selectedChat, setSelectedChat] = useState(false);
@@ -5254,20 +5325,96 @@ function Board({
   }, /*#__PURE__*/React.createElement(Btn, {
     small: true,
     variant: "ghost",
-    onClick: () => setZoom(z => Math.min(2, z + 0.2))
+    onClick: () => {
+      setZoom(z => Math.min(4, z * 1.25));
+    }
   }, "+"), /*#__PURE__*/React.createElement(Btn, {
     small: true,
     variant: "ghost",
-    onClick: () => setZoom(z => Math.max(0.5, z - 0.2))
-  }, "−")), /*#__PURE__*/React.createElement("div", {
-    className: "lf-board-scroll"
+    onClick: () => {
+      setZoom(z => Math.max(0.2, z * 0.8));
+    }
+  }, "−"), /*#__PURE__*/React.createElement(Btn, {
+    small: true,
+    variant: "ghost",
+    onClick: () => {
+      setZoom(1);
+      setPan({
+        x: 0,
+        y: 0
+      });
+    }
+  }, "⊡")), /*#__PURE__*/React.createElement("div", {
+    ref: boardContainerRef,
+    style: {
+      flex: 1,
+      minHeight: 0,
+      overflow: "hidden",
+      cursor: isPanning ? "grabbing" : "grab",
+      position: "relative"
+    },
+    onWheel: e => {
+      e.preventDefault();
+      const rect = boardContainerRef.current.getBoundingClientRect();
+      const mx = e.clientX - rect.left - rect.width / 2;
+      const my = e.clientY - rect.top - rect.height / 2;
+      const factor = e.deltaY < 0 ? 1.12 : 0.89;
+      setZoom(z => {
+        const nz = Math.max(0.2, Math.min(4, z * factor));
+        setPan(p => ({
+          x: p.x * (nz / z) + mx * (1 - nz / z),
+          y: p.y * (nz / z) + my * (1 - nz / z)
+        }));
+        return nz;
+      });
+    },
+    onMouseDown: e => {
+      if (e.button !== 0) return;
+      panStartRef.current = {
+        x: e.clientX - pan.x,
+        y: e.clientY - pan.y
+      };
+      setIsPanning(true);
+    },
+    onMouseMove: e => {
+      if (!isPanning || !panStartRef.current) return;
+      setPan({
+        x: e.clientX - panStartRef.current.x,
+        y: e.clientY - panStartRef.current.y
+      });
+    },
+    onMouseUp: () => setIsPanning(false),
+    onMouseLeave: () => setIsPanning(false),
+    onTouchStart: e => {
+      if (e.touches.length === 1) {
+        panStartRef.current = {
+          x: e.touches[0].clientX - pan.x,
+          y: e.touches[0].clientY - pan.y
+        };
+        setIsPanning(true);
+      }
+    },
+    onTouchMove: e => {
+      if (e.touches.length === 1 && isPanning && panStartRef.current) {
+        e.preventDefault();
+        setPan({
+          x: e.touches[0].clientX - panStartRef.current.x,
+          y: e.touches[0].clientY - panStartRef.current.y
+        });
+      }
+    },
+    onTouchEnd: () => setIsPanning(false)
   }, /*#__PURE__*/React.createElement("svg", {
     viewBox: `${minX} ${minY} ${vbW} ${vbH}`,
     style: {
       display: "block",
-      margin: "0 auto",
-      width: `${100 * zoom}%`,
-      height: "auto"
+      position: "absolute",
+      top: "50%",
+      left: "50%",
+      width: `${vbW * zoom}px`,
+      height: `${vbH * zoom}px`,
+      transform: `translate(calc(-50% + ${pan.x}px), calc(-50% + ${pan.y}px))`,
+      touchAction: "none"
     }
   }, /*#__PURE__*/React.createElement("defs", null, ["wood", "brick", "sheep", "wheat", "ore", "desert", "sea", "gold", "fog"].map(r => {
     const customUrl = hexImages[r];
@@ -5645,9 +5792,10 @@ function TopBarAction({
     if (!isMyTurn) return /*#__PURE__*/React.createElement("span", {
       className: "lf-topbar-action"
     }, "Waiting for ", playerName(state, state.turnOrder[state.currentIndex]), "…");
+    const hasSea = state.board?.hexes?.some(h => h.resource === "sea");
     return /*#__PURE__*/React.createElement("span", {
       className: "lf-topbar-action"
-    }, state.setupAwaitingRoad ? "Place a connecting road" : "Place your settlement");
+    }, state.setupAwaitingRoad ? hasSea ? "Place a road or ship" : "Place a connecting road" : "Place your settlement");
   }
   if (needsRobberMove && !state.robberStealChoices) {
     return /*#__PURE__*/React.createElement("span", {
@@ -6795,7 +6943,10 @@ function TopBar({
     customTheme: customTheme,
     saveCustomTheme: saveCustomTheme,
     toggleDevMode: toggleDevMode,
-    onClose: () => setDevPanelOpen(false)
+    onClose: () => setDevPanelOpen(false),
+    state: state,
+    mutate: mutate,
+    clientId: clientId
   }));
 }
 function DevTabMaps({
@@ -6870,13 +7021,311 @@ function DevTabMaps({
     title: "Board Editor"
   }));
 }
+function DevSandbox({
+  state,
+  mutate,
+  clientId
+}) {
+  const RES_LIST = ["wood", "brick", "sheep", "wheat", "ore"];
+  const [qty, setQty] = useState(3);
+  if (!state || state.phase === "lobby") return /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: "#a89a7e",
+      fontSize: 12
+    }
+  }, "Start a game to use the sandbox.");
+  const me = state.players.find(p => p.id === clientId);
+  const myResTotal = me ? Object.values(me.resources || {}).reduce((a, b) => a + b, 0) : 0;
+  function addRes(res, amount) {
+    mutate(s => {
+      const p = s.players.find(pl => pl.id === clientId);
+      if (!p) return s;
+      p.resources[res] = Math.max(0, (p.resources[res] || 0) + amount);
+      if (amount > 0) addLog(s, `🛠️ Dev: +${amount} ${res}`);
+      return s;
+    });
+  }
+  function addAllRes(amount) {
+    mutate(s => {
+      const p = s.players.find(pl => pl.id === clientId);
+      if (!p) return s;
+      RES_LIST.forEach(r => {
+        p.resources[r] = Math.max(0, (p.resources[r] || 0) + amount);
+      });
+      addLog(s, `🛠️ Dev: ${amount > 0 ? "+" : ""}${amount} of each resource`);
+      return s;
+    });
+  }
+  function clearRes() {
+    mutate(s => {
+      const p = s.players.find(pl => pl.id === clientId);
+      if (!p) return s;
+      RES_LIST.forEach(r => {
+        p.resources[r] = 0;
+      });
+      addLog(s, "🛠️ Dev: resources cleared");
+      return s;
+    });
+  }
+  function addVP(n) {
+    mutate(s => {
+      const p = s.players.find(pl => pl.id === clientId);
+      if (!p) return s;
+      p.devVp = Math.max(0, (p.devVp || 0) + n);
+      addLog(s, `🛠️ Dev: ${n > 0 ? "+" : ""}${n} VP`);
+      return s;
+    });
+  }
+  function addDevCard(type) {
+    mutate(s => {
+      const p = s.players.find(pl => pl.id === clientId);
+      if (!p) return s;
+      p.devCards = [...(p.devCards || []), {
+        type,
+        used: false,
+        newThisTurn: false
+      }];
+      addLog(s, `🛠️ Dev: added ${type} card`);
+      return s;
+    });
+  }
+  function skipToPhase(phase) {
+    mutate(s => {
+      s.phase = phase;
+      addLog(s, `🛠️ Dev: phase → ${phase}`);
+      return s;
+    });
+  }
+  function revealAllFog() {
+    mutate(s => {
+      s.board.hexes.forEach(h => {
+        if (h.resource === "fog") h.resource = "sheep";
+      });
+      addLog(s, "🛠️ Dev: all fog revealed");
+      return s;
+    });
+  }
+  function rollDice(n) {
+    mutate(s => {
+      s.lastRoll = n;
+      addLog(s, `🛠️ Dev: forced roll ${n}`);
+      return s;
+    });
+  }
+  const row = {
+    display: "flex",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 6
+  };
+  const label = {
+    fontSize: 11,
+    color: "#a89a7e",
+    width: 90,
+    flexShrink: 0
+  };
+  const chipBtn = (label, onClick, color = "#1a5276") => /*#__PURE__*/React.createElement("button", {
+    onClick: onClick,
+    style: {
+      background: color,
+      color: "#fff",
+      border: "none",
+      borderRadius: 5,
+      padding: "4px 8px",
+      fontSize: 10,
+      cursor: "pointer",
+      fontWeight: 600
+    }
+  }, label);
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 10,
+      fontSize: 11
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "rgba(255,100,0,0.1)",
+      border: "1px solid rgba(255,100,0,0.3)",
+      borderRadius: 6,
+      padding: "6px 10px",
+      color: "#ff9944",
+      fontSize: 10
+    }
+  }, "⚠️ Dev only — changes are visible to all players in the game log."), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "rgba(0,0,0,0.2)",
+      borderRadius: 8,
+      padding: "8px 10px"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      textTransform: "uppercase",
+      letterSpacing: 1,
+      color: "#a89a7e",
+      marginBottom: 6
+    }
+  }, "Resources ", me ? `(you have ${myResTotal})` : ""), /*#__PURE__*/React.createElement("div", {
+    style: row
+  }, /*#__PURE__*/React.createElement("span", {
+    style: label
+  }, "Quantity"), /*#__PURE__*/React.createElement("select", {
+    value: qty,
+    onChange: e => setQty(Number(e.target.value)),
+    style: {
+      background: "#192a3e",
+      border: "1px solid #1e3a5f",
+      color: "#fff",
+      borderRadius: 4,
+      padding: "3px 6px",
+      fontSize: 11
+    }
+  }, [1, 2, 3, 5, 10].map(n => /*#__PURE__*/React.createElement("option", {
+    key: n,
+    value: n
+  }, n)))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "grid",
+      gridTemplateColumns: "repeat(5,1fr)",
+      gap: 4,
+      marginBottom: 6
+    }
+  }, RES_LIST.map(r => /*#__PURE__*/React.createElement("div", {
+    key: r,
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 3
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onClick: () => addRes(r, qty),
+    style: {
+      background: "#1a5a2a",
+      color: "#aaffaa",
+      border: "none",
+      borderRadius: 4,
+      padding: "3px 0",
+      fontSize: 9,
+      cursor: "pointer"
+    }
+  }, "+", qty, " ", r), /*#__PURE__*/React.createElement("button", {
+    onClick: () => addRes(r, -qty),
+    style: {
+      background: "#5a1a1a",
+      color: "#ffaaaa",
+      border: "none",
+      borderRadius: 4,
+      padding: "3px 0",
+      fontSize: 9,
+      cursor: "pointer"
+    }
+  }, "-", qty)))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 4
+    }
+  }, chipBtn(`+${qty} all`, () => addAllRes(qty), "#1a4a2a"), chipBtn(`-${qty} all`, () => addAllRes(-qty), "#4a1a1a"), chipBtn("Clear all", clearRes, "#3a1a1a"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "rgba(0,0,0,0.2)",
+      borderRadius: 8,
+      padding: "8px 10px"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      textTransform: "uppercase",
+      letterSpacing: 1,
+      color: "#a89a7e",
+      marginBottom: 6
+    }
+  }, "Victory Points"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 4
+    }
+  }, chipBtn("+1 VP", () => addVP(1)), chipBtn("+3 VP", () => addVP(3)), chipBtn("-1 VP", () => addVP(-1), "#5a1a1a"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "rgba(0,0,0,0.2)",
+      borderRadius: 8,
+      padding: "8px 10px"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      textTransform: "uppercase",
+      letterSpacing: 1,
+      color: "#a89a7e",
+      marginBottom: 6
+    }
+  }, "Add Dev Card"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 4,
+      flexWrap: "wrap"
+    }
+  }, ["knight", "roadBuilding", "yearOfPlenty", "monopoly", "victoryPoint"].map(t => chipBtn(t, () => addDevCard(t))))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      background: "rgba(0,0,0,0.2)",
+      borderRadius: 8,
+      padding: "8px 10px"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      textTransform: "uppercase",
+      letterSpacing: 1,
+      color: "#a89a7e",
+      marginBottom: 6
+    }
+  }, "Board Controls"), /*#__PURE__*/React.createElement("div", {
+    style: row
+  }, /*#__PURE__*/React.createElement("span", {
+    style: label
+  }, "Force roll"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 3,
+      flexWrap: "wrap"
+    }
+  }, [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].map(n => /*#__PURE__*/React.createElement("button", {
+    key: n,
+    onClick: () => rollDice(n),
+    style: {
+      background: "#192a3e",
+      border: "1px solid #2a4a6a",
+      color: "#f7edd3",
+      borderRadius: 4,
+      padding: "3px 6px",
+      fontSize: 10,
+      cursor: "pointer"
+    }
+  }, n)))), /*#__PURE__*/React.createElement("div", {
+    style: row
+  }, /*#__PURE__*/React.createElement("span", {
+    style: label
+  }, "Fog"), chipBtn("Reveal all fog", revealAllFog, "#2a3a5a")), /*#__PURE__*/React.createElement("div", {
+    style: row
+  }, /*#__PURE__*/React.createElement("span", {
+    style: label
+  }, "Phase"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      gap: 3
+    }
+  }, ["setup", "main", "ended"].map(ph => chipBtn(ph, () => skipToPhase(ph), "#2a2a3a"))))));
+}
 function DevPanel({
   theme,
   setTheme,
   customTheme,
   saveCustomTheme,
   toggleDevMode,
-  onClose
+  onClose,
+  state,
+  mutate,
+  clientId
 }) {
   const baseTheme = THEMES[theme === "custom" ? "sheercon" : theme] || THEMES.sheercon;
   const startingValues = customTheme || {
@@ -6945,6 +7394,9 @@ function DevPanel({
   }, {
     id: "maps",
     label: "🗺️ Maps"
+  }, {
+    id: "sandbox",
+    label: "🧪 Sandbox"
   }];
   return /*#__PURE__*/React.createElement("div", {
     onClick: onClose,
@@ -7023,6 +7475,10 @@ function DevPanel({
     loadFromTheme: loadFromTheme
   }), activeTab === "sounds" && /*#__PURE__*/React.createElement(DevTabSounds, null), activeTab === "music" && /*#__PURE__*/React.createElement(DevTabMusic, null), activeTab === "maps" && /*#__PURE__*/React.createElement(DevTabMaps, {
     onClose: onClose
+  }), activeTab === "sandbox" && /*#__PURE__*/React.createElement(DevSandbox, {
+    state: state,
+    mutate: mutate,
+    clientId: clientId
   }), /*#__PURE__*/React.createElement("div", {
     style: {
       display: "flex",
@@ -8794,14 +9250,14 @@ function TradeModal({
   }, /*#__PURE__*/React.createElement("select", {
     value: give,
     onChange: e => setGive(e.target.value),
-    style: selectStyle
+    style: devSelectStyle
   }, RES.map(r => /*#__PURE__*/React.createElement("option", {
     key: r,
     value: r
   }, ratio, "× ", RES_LABEL[r]))), /*#__PURE__*/React.createElement("span", null, "→"), /*#__PURE__*/React.createElement("select", {
     value: get,
     onChange: e => setGet(e.target.value),
-    style: selectStyle
+    style: devSelectStyle
   }, RES.map(r => /*#__PURE__*/React.createElement("option", {
     key: r,
     value: r
@@ -8913,7 +9369,7 @@ function TradeModal({
     onClick: () => mutate(s => cancelTradeOffer(s, offer.id, clientId))
   }, "Cancel offer")))));
 }
-const selectStyle = {
+const devSelectStyle = {
   padding: 6,
   borderRadius: 6
 };
@@ -9022,7 +9478,7 @@ function DevCardModal({
     }, /*#__PURE__*/React.createElement("select", {
       value: monopolyPick || "",
       onChange: e => setMonopolyPick(e.target.value),
-      style: selectStyle
+      style: devSelectStyle
     }, /*#__PURE__*/React.createElement("option", {
       value: ""
     }, "pick"), RES.map(r => /*#__PURE__*/React.createElement("option", {
@@ -9039,7 +9495,7 @@ function DevCardModal({
       }
     }, /*#__PURE__*/React.createElement("select", {
       onChange: e => setYopPicks(p => [e.target.value, p[1]].filter(Boolean)),
-      style: selectStyle
+      style: devSelectStyle
     }, /*#__PURE__*/React.createElement("option", {
       value: ""
     }, "1st"), RES.map(r => /*#__PURE__*/React.createElement("option", {
@@ -9047,7 +9503,7 @@ function DevCardModal({
       value: r
     }, RES_LABEL[r]))), /*#__PURE__*/React.createElement("select", {
       onChange: e => setYopPicks(p => [p[0], e.target.value].filter(Boolean)),
-      style: selectStyle
+      style: devSelectStyle
     }, /*#__PURE__*/React.createElement("option", {
       value: ""
     }, "2nd"), RES.map(r => /*#__PURE__*/React.createElement("option", {
@@ -9105,12 +9561,24 @@ function setupPlaceRoad(s, playerId, eid) {
   const edge = s.board.edges.find(e => e.id === eid);
   if (!edge || roadOwnerAt(s.board, eid)) return s;
   if (edge.v1 !== s.lastSetupSettlement && edge.v2 !== s.lastSetupSettlement) return s;
+  // On Seafarers maps, allow ship on coastal edges; road on land edges
+  const hasSea = s.board.hexes.some(h => h.resource === "sea");
+  const isCoastalEdge = hasSea && edgeTouchesSea(s.board, eid);
+  const isLandEdge = edgeTouchesLand(s.board, eid);
+  if (!isCoastalEdge && !isLandEdge) return s; // neither — invalid
+  const placeShip = isCoastalEdge && !isLandEdge;
   s.board.roads[eid] = playerId;
+  s.board.roadTypes = s.board.roadTypes || {};
+  s.board.roadTypes[eid] = placeShip ? "ship" : "road";
   s.setupAwaitingRoad = false;
   s.setupPlaced += 1;
   const p = s.players.find(pl => pl.id === playerId);
-  p.roadsLeft = Math.max(0, (p.roadsLeft ?? 15) - 1);
-  addLog(s, `${p.name} placed a road.`, {
+  if (placeShip) {
+    p.shipsLeft = Math.max(0, (p.shipsLeft ?? 15) - 1);
+  } else {
+    p.roadsLeft = Math.max(0, (p.roadsLeft ?? 15) - 1);
+  }
+  addLog(s, `${p.name} placed a ${placeShip ? "ship" : "road"}.`, {
     forAll: true,
     sound: "build",
     silent: true
