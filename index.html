@@ -1343,81 +1343,21 @@ function translateCoords(coords, dq, dr) {
   }));
 }
 function fourIslandsCoords() {
-  // Four island clusters arranged so every cluster touches its two neighbors
-  // (gap=0 = shared edge). The diagonal pairs (NW-SE, NE-SW) have one sea hex
-  // between them. withSeaFrame then wraps only the outer perimeter — no ocean
-  // appears between adjacent clusters, giving a connected-looking board.
-  // Layout (N=NW, E=NE, W=SW, S=SE):
-  //   . E E . .
-  //   N N . E E E
-  //   N N N . S S
-  //   . W W W S S
-  //   . W W . . S
-  const nw = [{
-    q: -3,
-    r: -1
-  }, {
-    q: -2,
-    r: -1
-  }, {
-    q: -3,
-    r: 0
-  }, {
-    q: -2,
-    r: 0
-  }, {
-    q: -1,
-    r: 0
-  }];
-  const ne = [{
-    q: 1,
-    r: -2
-  }, {
-    q: 2,
-    r: -2
-  }, {
-    q: 0,
-    r: -1
-  }, {
-    q: 1,
-    r: -1
-  }, {
-    q: 2,
-    r: -1
-  }];
-  const sw = [{
-    q: -2,
-    r: 1
-  }, {
-    q: -1,
-    r: 1
-  }, {
-    q: 0,
-    r: 1
-  }, {
-    q: -2,
-    r: 2
-  }, {
-    q: -1,
-    r: 2
-  }];
-  const se = [{
-    q: 1,
-    r: 0
-  }, {
-    q: 2,
-    r: 0
-  }, {
-    q: 1,
-    r: 1
-  }, {
-    q: 2,
-    r: 1
-  }, {
-    q: 2,
-    r: 2
-  }];
-  return [...nw, ...ne, ...sw, ...se];
+  // Four islands — each a 7-hex (radius-1) hexagon, spaced 3-4 sea hexes apart
+  // so ships have real ocean lanes to sail between them.
+  // Centers: NW(-4,-2) NE(3,-3) SW(-4,4) SE(3,3)
+  const island = (cq, cr) => hexagonCoords(1).map(c => ({
+    q: c.q + cq,
+    r: c.r + cr
+  }));
+  return [...island(-4, -2),
+  // NW
+  ...island(3, -3),
+  // NE
+  ...island(-4, 4),
+  // SW
+  ...island(3, 3) // SE
+  ];
 }
 function starCoords() {
   // Six-armed star: center + 2 hexes along each of the 6 axial directions.
@@ -1722,6 +1662,38 @@ function withSeaFrame(landCoords, ringWidth = 1, extraForcedTypes = {}) {
     forcedTypes
   };
 }
+
+// Fill the entire bounding box (land + sea between islands + outer border).
+// Use this for Seafarers maps where islands are separated by real navigable ocean.
+function withSeaFill(landCoords, borderWidth = 1, extraForcedTypes = {}) {
+  const landSet = new Set(landCoords.map(c => `${c.q},${c.r}`));
+  const qs = landCoords.map(c => c.q);
+  const rs = landCoords.map(c => c.r);
+  const minQ = Math.min(...qs) - borderWidth;
+  const maxQ = Math.max(...qs) + borderWidth;
+  const minR = Math.min(...rs) - borderWidth;
+  const maxR = Math.max(...rs) + borderWidth;
+  const allCoords = [];
+  const forcedTypes = {
+    ...extraForcedTypes
+  };
+  for (let q = minQ; q <= maxQ; q++) {
+    for (let r = minR; r <= maxR; r++) {
+      allCoords.push({
+        q,
+        r
+      });
+      const key = `${q},${r}`;
+      if (!landSet.has(key) && !forcedTypes[key]) {
+        forcedTypes[key] = "sea";
+      }
+    }
+  }
+  return {
+    coords: allCoords,
+    forcedTypes
+  };
+}
 function michiganSeafarersConfig() {
   const land = michiganCoords();
   const ring = ringCoordsAround(land, 1);
@@ -1886,15 +1858,14 @@ const MAPS = {
     minP: 4,
     maxP: 6,
     build: () => {
-      const land = fourIslandsCoords();
-      // 1-ring sea frame keeps islands close enough for ships to reach each other
-      // in 3-5 turns while still feeling distinct. 2 rings made them too far.
-      const framed = withSeaFrame(land, 1);
+      // withSeaFill fills the ENTIRE bounding box with sea hexes between islands
+      // so ships have real navigable ocean, not just page background.
+      const filled = withSeaFill(fourIslandsCoords(), 1);
       return {
-        coords: framed.coords,
+        coords: filled.coords,
         size: 40,
         desertCount: 2,
-        forcedTypes: framed.forcedTypes
+        forcedTypes: filled.forcedTypes
       };
     }
   },
@@ -1922,22 +1893,15 @@ const MAPS = {
     minP: 3,
     maxP: 4,
     build: () => {
-      const outerRing = ringAtollCoords(); // 12 outer-shell hexes
-      // Fill the interior (inner ring + center) as sea hexes
-      const innerAndCenter = hexagonCoords(1); // center + 6 neighbors = 7 hexes
-      const forcedTypes = {};
-      innerAndCenter.forEach(c => forcedTypes[`${c.q},${c.r}`] = "sea");
-      const framed = withSeaFrame(outerRing, 1);
-      // Merge forced types: inner sea overrides anything withSeaFrame set
-      Object.assign(framed.forcedTypes, forcedTypes);
-      const allCoords = [...framed.coords, ...innerAndCenter.filter(c => {
-        return !framed.coords.some(fc => fc.q === c.q && fc.r === c.r);
-      })];
+      // Outer land ring (dist=2 from center, 12 hexes). withSeaFill fills
+      // the entire bounding box — lagoon interior AND outer border — with sea hexes.
+      const outerRing = ringAtollCoords();
+      const filled = withSeaFill(outerRing, 1);
       return {
-        coords: allCoords,
+        coords: filled.coords,
         size: 48,
         desertCount: 1,
-        forcedTypes: framed.forcedTypes
+        forcedTypes: filled.forcedTypes
       };
     }
   },
@@ -1988,12 +1952,14 @@ const MAPS = {
     minP: 4,
     maxP: 6,
     build: () => {
-      const framed = withSeaFrame(twinIslesCoords(), 1);
+      // withSeaFill fills the 2-hex strait between islands with real sea hexes
+      // so ships can actually sail through it (not just background showing through).
+      const filled = withSeaFill(twinIslesCoords(), 1);
       return {
-        coords: framed.coords,
+        coords: filled.coords,
         size: 44,
         desertCount: 2,
-        forcedTypes: framed.forcedTypes
+        forcedTypes: filled.forcedTypes
       };
     }
   },
