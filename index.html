@@ -16,27 +16,10 @@
 </head>
 <body>
 
-<div id="fb-error-banner">
-  Firebase config is missing or invalid — edit the CONFIG section near the top of this file. See comments below.
-</div>
 <div id="root"></div>
 
-<!--
-  ============================================================
-  SETUP: paste your Firebase config below, then this file works.
-  1. Go to https://console.firebase.google.com -> Add project (free).
-  2. In your project: Build -> Realtime Database -> Create Database
-     -> start in "test mode" (fine for a friends game; you can lock
-     it down later, see the security rules note below).
-  3. Project settings (gear icon) -> General -> "Your apps" -> Add app -> Web (</>) .
-  4. Copy the firebaseConfig object it gives you and paste it below,
-     replacing the placeholder values.
-  ============================================================
--->
 <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
 <script>
 const {
   useState,
@@ -2840,24 +2823,11 @@ function computeVictoryPoints(state, player, viewerId) {
 
 const POLL_MS = 2500;
 async function saveGame(code, obj) {
-  const {
-    db,
-    ref,
-    set
-  } = window.__fb;
-  await set(ref(db, "games/" + code), {
-    json: JSON.stringify(obj),
-    updatedAt: Date.now()
-  });
+  localStorage.setItem(`landfall-game:${code}`, JSON.stringify(obj));
 }
 async function loadGame(code) {
-  const {
-    db,
-    ref,
-    get
-  } = window.__fb;
-  const snap = await get(ref(db, "games/" + code));
-  return snap.exists() ? JSON.parse(snap.val().json) : null;
+  const raw = localStorage.getItem(`landfall-game:${code}`);
+  return raw ? JSON.parse(raw) : null;
 }
 function useGame(code) {
   const [state, setState] = useState(null);
