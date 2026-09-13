@@ -3356,6 +3356,7 @@ function Landfall() {
   const [colorDraft, setColorDraft] = useState(PLAYER_COLORS[0]);
   const [iconDraft, setIconDraft] = useState(PLAYER_ICONS[0]);
   const [mode, setMode] = useState("home");
+  const [homeDevPanel, setHomeDevPanel] = useState(false);
   const {
     state,
     mutate,
@@ -10819,7 +10820,7 @@ function applyTimeoutAction(s, action) {
   }
   return s;
 }
-const rootEl = document.getElementById("root");
+const rootEl = document.getElementById('root');
 ReactDOM.createRoot(rootEl).render(/*#__PURE__*/React.createElement(Landfall, null));
 </script>
 
