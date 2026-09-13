@@ -5027,6 +5027,8 @@ function Board({
     maxY = Math.max(...ys) + pad;
   const vbW = maxX - minX,
     vbH = maxY - minY;
+  // Derive the actual hex size from the board so UI elements scale proportionally
+  const boardHexSize = board.hexes[0]?.size ?? 46;
   function doMutate(fn) {
     if (state.options?.allowUndo) {
       mutate(s => {
@@ -5345,13 +5347,14 @@ function Board({
       const dx = mx - hexRef.cx,
         dy = my - hexRef.cy;
       const dist = Math.sqrt(dx * dx + dy * dy) || 1;
-      ox = mx + dx / dist * 22;
-      oy = my + dy / dist * 22;
+      const pushOut = boardHexSize * 0.48;
+      ox = mx + dx / dist * pushOut;
+      oy = my + dy / dist * pushOut;
     }
     const ratio = p.type === "3:1" ? "3:1" : "2:1";
     const portKey = p.type === "3:1" ? "port_generic" : "port_" + p.type;
     const badgeUrl = EMBEDDED_IMAGES[portKey];
-    const badgeSize = 30;
+    const badgeSize = boardHexSize * 0.65;
     return /*#__PURE__*/React.createElement("g", {
       key: i
     }, /*#__PURE__*/React.createElement("line", {
@@ -5379,8 +5382,8 @@ function Board({
       preserveAspectRatio: "xMidYMid meet"
     }), /*#__PURE__*/React.createElement("text", {
       x: ox,
-      y: oy + badgeSize / 2 + 7,
-      fontSize: 8.5,
+      y: oy + badgeSize / 2 + boardHexSize * 0.15,
+      fontSize: Math.max(6, boardHexSize * 0.18),
       textAnchor: "middle",
       fontWeight: 800,
       fill: "#f2e8d0",
@@ -5523,7 +5526,7 @@ function Board({
     }, valid && /*#__PURE__*/React.createElement("circle", {
       cx: v.x,
       cy: v.y,
-      r: 20,
+      r: boardHexSize * 0.45,
       fill: "transparent",
       style: {
         cursor: "pointer"
@@ -5532,7 +5535,7 @@ function Board({
     }), valid && !b && /*#__PURE__*/React.createElement("circle", {
       cx: v.x,
       cy: v.y,
-      r: 8,
+      r: boardHexSize * 0.18,
       fill: "rgba(181,80,45,0.4)",
       stroke: "#b5502d",
       strokeWidth: 1.5,
@@ -5547,7 +5550,7 @@ function Board({
     }), valid && b && /*#__PURE__*/React.createElement("circle", {
       cx: v.x,
       cy: v.y,
-      r: 11,
+      r: boardHexSize * 0.24,
       fill: "none",
       stroke: "#b5502d",
       strokeWidth: 2,
@@ -5897,23 +5900,23 @@ function HexTile({
     opacity: 0.6
   }, "🌫️"), hex.number && !cityName && /*#__PURE__*/React.createElement("g", null, /*#__PURE__*/React.createElement("ellipse", {
     cx: hex.cx,
-    cy: hex.cy + 2.5,
-    rx: 14,
-    ry: 13,
+    cy: hex.cy + hex.size * 0.05,
+    rx: hex.size * 0.3,
+    ry: hex.size * 0.28,
     fill: "rgba(0,0,0,0.35)"
   }), /*#__PURE__*/React.createElement("image", {
     href: EMBEDDED_IMAGES.pip_bg,
-    x: hex.cx - 15,
-    y: hex.cy - 15,
-    width: 30,
-    height: 30,
+    x: hex.cx - hex.size * 0.32,
+    y: hex.cy - hex.size * 0.32,
+    width: hex.size * 0.65,
+    height: hex.size * 0.65,
     preserveAspectRatio: "xMidYMid slice"
   }), /*#__PURE__*/React.createElement("text", {
     x: hex.cx,
-    y: hex.cy + 4,
+    y: hex.cy + hex.size * 0.09,
     textAnchor: "middle",
     fontFamily: "'Fraunces', serif",
-    fontSize: 14,
+    fontSize: hex.size * 0.3,
     fontWeight: 800,
     fill: hot ? "#ff4a3d" : "#1a1206",
     style: {
@@ -5926,23 +5929,23 @@ function HexTile({
   }).map((_, i) => /*#__PURE__*/React.createElement("circle", {
     key: i,
     cx: dotStartX + i * dotSpacing,
-    cy: hex.cy + 10,
-    r: 0.9,
+    cy: hex.cy + hex.size * 0.22,
+    r: hex.size * 0.02,
     fill: hot ? "#ff4a3d" : "#f4e5b8"
   }))), hex.number && cityName && /*#__PURE__*/React.createElement("g", null, /*#__PURE__*/React.createElement("rect", {
-    x: hex.cx - 21,
-    y: hex.cy - 16,
-    width: 42,
-    height: 32,
-    rx: 11,
+    x: hex.cx - hex.size * 0.46,
+    y: hex.cy - hex.size * 0.35,
+    width: hex.size * 0.92,
+    height: hex.size * 0.7,
+    rx: hex.size * 0.24,
     fill: "rgba(0,0,0,0.35)",
     transform: `translate(1.5, 2.5)`
   }), /*#__PURE__*/React.createElement("image", {
     href: EMBEDDED_IMAGES.pip_bg,
-    x: hex.cx - 21,
-    y: hex.cy - 16,
-    width: 42,
-    height: 32,
+    x: hex.cx - hex.size * 0.46,
+    y: hex.cy - hex.size * 0.35,
+    width: hex.size * 0.92,
+    height: hex.size * 0.7,
     preserveAspectRatio: "xMidYMid slice",
     clipPath: "inset(0 round 11px)"
   }), /*#__PURE__*/React.createElement("rect", {
