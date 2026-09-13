@@ -5101,7 +5101,7 @@ function Board({
   // Derive the actual hex size from the board so UI elements scale proportionally
   const boardHexSize = board.hexes[0]?.size ?? 46;
   function doMutate(fn) {
-    if (state.options?.allowUndo) {
+    if (state.options?.allowUndo || devMode) {
       mutate(s => {
         const before = structuredCloneSafe(s);
         before.undoSnapshot = null;
@@ -5416,38 +5416,607 @@ function Board({
       transform: `translate(calc(-50% + ${pan.x}px), calc(-50% + ${pan.y}px))`,
       touchAction: "none"
     }
-  }, /*#__PURE__*/React.createElement("defs", null, ["wood", "brick", "sheep", "wheat", "ore", "desert", "sea", "gold", "fog"].map(r => {
-    const customUrl = hexImages[r];
-    if (customUrl) {
-      return /*#__PURE__*/React.createElement("pattern", {
-        key: r,
-        id: `hexfill-${r}`,
-        patternUnits: "objectBoundingBox",
-        patternContentUnits: "objectBoundingBox",
-        width: "1",
-        height: "1"
-      }, /*#__PURE__*/React.createElement("image", {
-        href: customUrl,
-        width: "1",
-        height: "1",
-        preserveAspectRatio: "xMidYMid slice"
-      }));
-    }
-    const base = customTheme && customTheme.hexColors && customTheme.hexColors[r] || DEFAULT_HEX_COLORS[r];
-    return /*#__PURE__*/React.createElement("radialGradient", {
-      key: r,
-      id: `hexfill-${r}`,
-      cx: "35%",
-      cy: "30%",
-      r: "75%"
-    }, /*#__PURE__*/React.createElement("stop", {
-      offset: "0%",
-      stopColor: shadeHex(base, 0.28)
-    }), /*#__PURE__*/React.createElement("stop", {
-      offset: "100%",
-      stopColor: base
-    }));
+  }, /*#__PURE__*/React.createElement("defs", null, /*#__PURE__*/React.createElement("filter", {
+    id: "grain-wood",
+    x: "0",
+    y: "0",
+    width: "100%",
+    height: "100%"
+  }, /*#__PURE__*/React.createElement("feTurbulence", {
+    type: "fractalNoise",
+    baseFrequency: "0.65 0.45",
+    numOctaves: "4",
+    seed: "3",
+    result: "noise"
+  }), /*#__PURE__*/React.createElement("feColorMatrix", {
+    in: "noise",
+    type: "saturate",
+    values: "0",
+    result: "grey"
+  }), /*#__PURE__*/React.createElement("feBlend", {
+    in: "SourceGraphic",
+    in2: "grey",
+    mode: "multiply",
+    result: "blend"
+  }), /*#__PURE__*/React.createElement("feComponentTransfer", {
+    in: "blend"
+  }, /*#__PURE__*/React.createElement("feFuncA", {
+    type: "linear",
+    slope: "1"
+  }))), /*#__PURE__*/React.createElement("filter", {
+    id: "grain-water",
+    x: "0",
+    y: "0",
+    width: "100%",
+    height: "100%"
+  }, /*#__PURE__*/React.createElement("feTurbulence", {
+    type: "turbulence",
+    baseFrequency: "0.02 0.15",
+    numOctaves: "3",
+    seed: "9",
+    result: "noise"
+  }), /*#__PURE__*/React.createElement("feDisplacementMap", {
+    in: "SourceGraphic",
+    in2: "noise",
+    scale: "8",
+    xChannelSelector: "R",
+    yChannelSelector: "G"
+  })), /*#__PURE__*/React.createElement("filter", {
+    id: "grain-sand",
+    x: "0",
+    y: "0",
+    width: "100%",
+    height: "100%"
+  }, /*#__PURE__*/React.createElement("feTurbulence", {
+    type: "fractalNoise",
+    baseFrequency: "0.4 0.2",
+    numOctaves: "3",
+    seed: "5",
+    result: "noise"
+  }), /*#__PURE__*/React.createElement("feColorMatrix", {
+    in: "noise",
+    type: "saturate",
+    values: "0.3",
+    result: "sandy"
+  }), /*#__PURE__*/React.createElement("feBlend", {
+    in: "SourceGraphic",
+    in2: "sandy",
+    mode: "overlay"
+  })), /*#__PURE__*/React.createElement("filter", {
+    id: "grain-rock",
+    x: "0",
+    y: "0",
+    width: "100%",
+    height: "100%"
+  }, /*#__PURE__*/React.createElement("feTurbulence", {
+    type: "fractalNoise",
+    baseFrequency: "0.8 0.5",
+    numOctaves: "4",
+    seed: "12",
+    result: "noise"
+  }), /*#__PURE__*/React.createElement("feColorMatrix", {
+    in: "noise",
+    type: "saturate",
+    values: "0",
+    result: "grey"
+  }), /*#__PURE__*/React.createElement("feBlend", {
+    in: "SourceGraphic",
+    in2: "grey",
+    mode: "overlay"
+  })), /*#__PURE__*/React.createElement("radialGradient", {
+    id: "frameGrad",
+    cx: "50%",
+    cy: "50%",
+    r: "50%"
+  }, /*#__PURE__*/React.createElement("stop", {
+    offset: "60%",
+    stopColor: "transparent"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "78%",
+    stopColor: "rgba(100,60,10,0.7)"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "88%",
+    stopColor: "rgba(160,100,20,0.9)"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "95%",
+    stopColor: "rgba(80,45,8,0.95)"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "100%",
+    stopColor: "rgba(40,20,4,1)"
+  })), /*#__PURE__*/React.createElement("radialGradient", {
+    id: "frameBevel",
+    cx: "38%",
+    cy: "22%",
+    r: "65%"
+  }, /*#__PURE__*/React.createElement("stop", {
+    offset: "0%",
+    stopColor: "rgba(255,255,255,0.22)"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "40%",
+    stopColor: "rgba(255,255,255,0.04)"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "100%",
+    stopColor: "rgba(0,0,0,0.15)"
+  })), /*#__PURE__*/React.createElement("radialGradient", {
+    id: "pipRim",
+    cx: "50%",
+    cy: "50%",
+    r: "50%"
+  }, /*#__PURE__*/React.createElement("stop", {
+    offset: "72%",
+    stopColor: "#c8a040"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "83%",
+    stopColor: "#8a6018"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "91%",
+    stopColor: "#c0900a"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "100%",
+    stopColor: "#5a3a08"
+  })), /*#__PURE__*/React.createElement("radialGradient", {
+    id: "pipFace",
+    cx: "38%",
+    cy: "30%",
+    r: "70%"
+  }, /*#__PURE__*/React.createElement("stop", {
+    offset: "0%",
+    stopColor: "#fdf0c0"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "50%",
+    stopColor: "#e8c870"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "100%",
+    stopColor: "#b08820"
+  })), /*#__PURE__*/React.createElement("filter", {
+    id: "pipGrain"
+  }, /*#__PURE__*/React.createElement("feTurbulence", {
+    type: "fractalNoise",
+    baseFrequency: "0.9 0.6",
+    numOctaves: "3",
+    seed: "2",
+    result: "n"
+  }), /*#__PURE__*/React.createElement("feColorMatrix", {
+    in: "n",
+    type: "matrix",
+    values: "0.5 0 0 0 0.3  0 0.4 0 0 0.2  0 0 0 0 0  0 0 0 0.4 0"
+  }), /*#__PURE__*/React.createElement("feComposite", {
+    in2: "SourceGraphic",
+    operator: "in"
+  })), /*#__PURE__*/React.createElement("pattern", {
+    id: "hexfill-wood",
+    patternUnits: "objectBoundingBox",
+    patternContentUnits: "objectBoundingBox",
+    width: "1",
+    height: "1"
+  }, /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "#3a6b2a"
+  }), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "url(#woodVStripe)",
+    opacity: "0.5"
+  }), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "#2d5c22",
+    opacity: "0.3",
+    filter: "url(#grain-wood)"
   }), /*#__PURE__*/React.createElement("radialGradient", {
+    id: "woodGlow",
+    cx: "40%",
+    cy: "25%",
+    r: "60%"
+  }, /*#__PURE__*/React.createElement("stop", {
+    offset: "0%",
+    stopColor: "rgba(120,180,80,0.35)"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "100%",
+    stopColor: "rgba(20,50,10,0.2)"
+  })), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "url(#woodGlow)"
+  }), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "url(#frameGrad)"
+  }), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "url(#frameBevel)"
+  })), /*#__PURE__*/React.createElement("pattern", {
+    id: "woodVStripe",
+    patternUnits: "objectBoundingBox",
+    width: "0.08",
+    height: "1"
+  }, /*#__PURE__*/React.createElement("rect", {
+    width: "0.05",
+    height: "1",
+    fill: "rgba(40,80,20,0.4)"
+  })), /*#__PURE__*/React.createElement("pattern", {
+    id: "hexfill-brick",
+    patternUnits: "objectBoundingBox",
+    patternContentUnits: "objectBoundingBox",
+    width: "1",
+    height: "1"
+  }, /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "#a04820"
+  }), /*#__PURE__*/React.createElement("radialGradient", {
+    id: "brickGrad",
+    cx: "45%",
+    cy: "35%",
+    r: "65%"
+  }, /*#__PURE__*/React.createElement("stop", {
+    offset: "0%",
+    stopColor: "#c86030"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "60%",
+    stopColor: "#943818"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "100%",
+    stopColor: "#6a2208"
+  })), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "url(#brickGrad)"
+  }), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "#804018",
+    opacity: "0.4",
+    filter: "url(#grain-rock)"
+  }), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "url(#frameGrad)"
+  }), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "url(#frameBevel)"
+  })), /*#__PURE__*/React.createElement("pattern", {
+    id: "hexfill-sheep",
+    patternUnits: "objectBoundingBox",
+    patternContentUnits: "objectBoundingBox",
+    width: "1",
+    height: "1"
+  }, /*#__PURE__*/React.createElement("radialGradient", {
+    id: "sheepGrad",
+    cx: "50%",
+    cy: "60%",
+    r: "65%"
+  }, /*#__PURE__*/React.createElement("stop", {
+    offset: "0%",
+    stopColor: "#8dc840"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "70%",
+    stopColor: "#6aaa28"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "100%",
+    stopColor: "#4a8010"
+  })), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "url(#sheepGrad)"
+  }), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "#5a9820",
+    opacity: "0.35",
+    filter: "url(#grain-wood)"
+  }), /*#__PURE__*/React.createElement("radialGradient", {
+    id: "sheepLight",
+    cx: "40%",
+    cy: "20%",
+    r: "55%"
+  }, /*#__PURE__*/React.createElement("stop", {
+    offset: "0%",
+    stopColor: "rgba(180,230,100,0.4)"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "100%",
+    stopColor: "rgba(40,80,0,0.1)"
+  })), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "url(#sheepLight)"
+  }), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "url(#frameGrad)"
+  }), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "url(#frameBevel)"
+  })), /*#__PURE__*/React.createElement("pattern", {
+    id: "hexfill-wheat",
+    patternUnits: "objectBoundingBox",
+    patternContentUnits: "objectBoundingBox",
+    width: "1",
+    height: "1"
+  }, /*#__PURE__*/React.createElement("radialGradient", {
+    id: "wheatGrad",
+    cx: "50%",
+    cy: "50%",
+    r: "65%"
+  }, /*#__PURE__*/React.createElement("stop", {
+    offset: "0%",
+    stopColor: "#d4b040"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "60%",
+    stopColor: "#c09828"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "100%",
+    stopColor: "#8a6810"
+  })), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "url(#wheatGrad)"
+  }), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "#b08820",
+    opacity: "0.4",
+    filter: "url(#grain-sand)"
+  }), /*#__PURE__*/React.createElement("radialGradient", {
+    id: "wheatSheen",
+    cx: "35%",
+    cy: "22%",
+    r: "60%"
+  }, /*#__PURE__*/React.createElement("stop", {
+    offset: "0%",
+    stopColor: "rgba(255,230,120,0.45)"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "100%",
+    stopColor: "rgba(80,50,0,0.1)"
+  })), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "url(#wheatSheen)"
+  }), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "url(#frameGrad)"
+  }), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "url(#frameBevel)"
+  })), /*#__PURE__*/React.createElement("pattern", {
+    id: "hexfill-ore",
+    patternUnits: "objectBoundingBox",
+    patternContentUnits: "objectBoundingBox",
+    width: "1",
+    height: "1"
+  }, /*#__PURE__*/React.createElement("radialGradient", {
+    id: "oreGrad",
+    cx: "40%",
+    cy: "35%",
+    r: "70%"
+  }, /*#__PURE__*/React.createElement("stop", {
+    offset: "0%",
+    stopColor: "#9aa8b8"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "50%",
+    stopColor: "#6a7888"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "100%",
+    stopColor: "#404855"
+  })), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "url(#oreGrad)"
+  }), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "#586070",
+    opacity: "0.5",
+    filter: "url(#grain-rock)"
+  }), /*#__PURE__*/React.createElement("radialGradient", {
+    id: "oreSheen",
+    cx: "30%",
+    cy: "20%",
+    r: "55%"
+  }, /*#__PURE__*/React.createElement("stop", {
+    offset: "0%",
+    stopColor: "rgba(200,210,230,0.4)"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "100%",
+    stopColor: "rgba(20,25,35,0.1)"
+  })), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "url(#oreSheen)"
+  }), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "url(#frameGrad)"
+  }), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "url(#frameBevel)"
+  })), /*#__PURE__*/React.createElement("pattern", {
+    id: "hexfill-desert",
+    patternUnits: "objectBoundingBox",
+    patternContentUnits: "objectBoundingBox",
+    width: "1",
+    height: "1"
+  }, /*#__PURE__*/React.createElement("radialGradient", {
+    id: "desertGrad",
+    cx: "50%",
+    cy: "45%",
+    r: "65%"
+  }, /*#__PURE__*/React.createElement("stop", {
+    offset: "0%",
+    stopColor: "#e8d8b8"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "55%",
+    stopColor: "#d4be98"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "100%",
+    stopColor: "#b89a70"
+  })), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "url(#desertGrad)"
+  }), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "#c0a870",
+    opacity: "0.35",
+    filter: "url(#grain-sand)"
+  }), /*#__PURE__*/React.createElement("radialGradient", {
+    id: "desertSheen",
+    cx: "40%",
+    cy: "25%",
+    r: "60%"
+  }, /*#__PURE__*/React.createElement("stop", {
+    offset: "0%",
+    stopColor: "rgba(255,245,210,0.5)"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "100%",
+    stopColor: "rgba(120,80,20,0.15)"
+  })), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "url(#desertSheen)"
+  })), /*#__PURE__*/React.createElement("pattern", {
+    id: "hexfill-sea",
+    patternUnits: "objectBoundingBox",
+    patternContentUnits: "objectBoundingBox",
+    width: "1",
+    height: "1"
+  }, /*#__PURE__*/React.createElement("radialGradient", {
+    id: "seaGrad",
+    cx: "50%",
+    cy: "50%",
+    r: "65%"
+  }, /*#__PURE__*/React.createElement("stop", {
+    offset: "0%",
+    stopColor: "#2a6488"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "60%",
+    stopColor: "#0d4a68"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "100%",
+    stopColor: "#082e45"
+  })), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "url(#seaGrad)"
+  }), /*#__PURE__*/React.createElement("pattern", {
+    id: "wavePattern",
+    patternUnits: "objectBoundingBox",
+    width: "0.25",
+    height: "0.12"
+  }, /*#__PURE__*/React.createElement("path", {
+    d: "M0,0.06 Q0.0625,0 0.125,0.06 Q0.1875,0.12 0.25,0.06",
+    stroke: "rgba(100,170,210,0.35)",
+    strokeWidth: "0.008",
+    fill: "none"
+  })), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "url(#wavePattern)"
+  }), /*#__PURE__*/React.createElement("radialGradient", {
+    id: "seaSheen",
+    cx: "35%",
+    cy: "25%",
+    r: "55%"
+  }, /*#__PURE__*/React.createElement("stop", {
+    offset: "0%",
+    stopColor: "rgba(100,180,220,0.3)"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "100%",
+    stopColor: "rgba(0,20,40,0.2)"
+  })), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "url(#seaSheen)"
+  })), /*#__PURE__*/React.createElement("pattern", {
+    id: "hexfill-gold",
+    patternUnits: "objectBoundingBox",
+    patternContentUnits: "objectBoundingBox",
+    width: "1",
+    height: "1"
+  }, /*#__PURE__*/React.createElement("radialGradient", {
+    id: "goldGrad",
+    cx: "45%",
+    cy: "35%",
+    r: "65%"
+  }, /*#__PURE__*/React.createElement("stop", {
+    offset: "0%",
+    stopColor: "#f0c840"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "50%",
+    stopColor: "#d4980a"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "100%",
+    stopColor: "#906010"
+  })), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "url(#goldGrad)"
+  }), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "#c09010",
+    opacity: "0.4",
+    filter: "url(#grain-rock)"
+  }), /*#__PURE__*/React.createElement("radialGradient", {
+    id: "goldSheen",
+    cx: "30%",
+    cy: "20%",
+    r: "55%"
+  }, /*#__PURE__*/React.createElement("stop", {
+    offset: "0%",
+    stopColor: "rgba(255,240,140,0.6)"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "60%",
+    stopColor: "rgba(200,150,0,0.2)"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "100%",
+    stopColor: "rgba(80,40,0,0.1)"
+  })), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "url(#goldSheen)"
+  }), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "url(#frameGrad)"
+  }), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "url(#frameBevel)"
+  })), /*#__PURE__*/React.createElement("pattern", {
+    id: "hexfill-fog",
+    patternUnits: "objectBoundingBox",
+    patternContentUnits: "objectBoundingBox",
+    width: "1",
+    height: "1"
+  }, /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "#1e2a35"
+  }), /*#__PURE__*/React.createElement("radialGradient", {
+    id: "fogGrad",
+    cx: "50%",
+    cy: "50%",
+    r: "60%"
+  }, /*#__PURE__*/React.createElement("stop", {
+    offset: "0%",
+    stopColor: "rgba(80,110,140,0.4)"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "100%",
+    stopColor: "rgba(10,18,28,0.2)"
+  })), /*#__PURE__*/React.createElement("rect", {
+    width: "1",
+    height: "1",
+    fill: "url(#fogGrad)"
+  })), /*#__PURE__*/React.createElement("radialGradient", {
     id: "tokenFace",
     cx: "35%",
     cy: "30%",
@@ -5474,7 +6043,25 @@ function Board({
     in: "noise",
     type: "matrix",
     values: "0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 0.9 0"
-  }))), board.hexes.map(h => /*#__PURE__*/React.createElement(HexTile, {
+  })), ["wood", "brick", "sheep", "wheat", "ore", "generic"].map(t => /*#__PURE__*/React.createElement("radialGradient", {
+    key: t,
+    id: `portRim-${t}`,
+    cx: "38%",
+    cy: "28%",
+    r: "70%"
+  }, /*#__PURE__*/React.createElement("stop", {
+    offset: "0%",
+    stopColor: "#e8e8e8"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "50%",
+    stopColor: "#c0c0c0"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "80%",
+    stopColor: "#909090"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "100%",
+    stopColor: "#606060"
+  })))), board.hexes.map(h => /*#__PURE__*/React.createElement(HexTile, {
     key: h.id,
     hex: h,
     isRobber: board.robberHexId === h.id,
@@ -5499,9 +6086,25 @@ function Board({
       oy = my + dy / dist * pushOut;
     }
     const ratio = p.type === "3:1" ? "3:1" : "2:1";
-    const portKey = p.type === "3:1" ? "port_generic" : "port_" + p.type;
-    const badgeUrl = EMBEDDED_IMAGES[portKey];
-    const badgeSize = boardHexSize * 0.65;
+    const PORT_COLORS = {
+      wood: "#2d6a2d",
+      brick: "#8b3a1a",
+      sheep: "#5a9e3a",
+      wheat: "#c8a020",
+      ore: "#4a4a6a",
+      "3:1": "#6a4a1a"
+    };
+    const PORT_ICONS = {
+      wood: "🌲",
+      brick: "🧱",
+      sheep: "🐑",
+      wheat: "🌾",
+      ore: "⛏️",
+      "3:1": "⚓"
+    };
+    const badgeR = boardHexSize * 0.34;
+    const portColor = PORT_COLORS[p.type] || "#6a4a1a";
+    const portIcon = PORT_ICONS[p.type] || "⚓";
     return /*#__PURE__*/React.createElement("g", {
       key: i
     }, /*#__PURE__*/React.createElement("line", {
@@ -5510,26 +6113,62 @@ function Board({
       x2: ox,
       y2: oy,
       stroke: "#7a6a4a",
-      strokeWidth: 1.5,
-      strokeDasharray: "2,2"
+      strokeWidth: boardHexSize * 0.035,
+      strokeDasharray: `${boardHexSize * 0.05},${boardHexSize * 0.07}`
     }), /*#__PURE__*/React.createElement("line", {
       x1: v2.x,
       y1: v2.y,
       x2: ox,
       y2: oy,
       stroke: "#7a6a4a",
-      strokeWidth: 1.5,
-      strokeDasharray: "2,2"
-    }), badgeUrl && /*#__PURE__*/React.createElement("image", {
-      href: badgeUrl,
-      x: ox - badgeSize / 2,
-      y: oy - badgeSize / 2,
-      width: badgeSize,
-      height: badgeSize,
-      preserveAspectRatio: "xMidYMid meet"
+      strokeWidth: boardHexSize * 0.035,
+      strokeDasharray: `${boardHexSize * 0.05},${boardHexSize * 0.07}`
+    }), /*#__PURE__*/React.createElement("circle", {
+      cx: ox,
+      cy: oy + badgeR * 0.1,
+      r: badgeR * 1.05,
+      fill: "rgba(0,0,0,0.4)"
+    }), /*#__PURE__*/React.createElement("circle", {
+      cx: ox,
+      cy: oy,
+      r: badgeR,
+      fill: `url(#portRim-${p.type === "3:1" ? "generic" : p.type})`
+    }), /*#__PURE__*/React.createElement("circle", {
+      cx: ox,
+      cy: oy,
+      r: badgeR * 0.78,
+      fill: portColor
+    }), /*#__PURE__*/React.createElement("radialGradient", {
+      id: `portFaceGlow-${i}`,
+      cx: "38%",
+      cy: "28%",
+      r: "65%"
+    }, /*#__PURE__*/React.createElement("stop", {
+      offset: "0%",
+      stopColor: "rgba(255,255,255,0.35)"
+    }), /*#__PURE__*/React.createElement("stop", {
+      offset: "100%",
+      stopColor: "rgba(0,0,0,0.2)"
+    })), /*#__PURE__*/React.createElement("circle", {
+      cx: ox,
+      cy: oy,
+      r: badgeR * 0.78,
+      fill: `url(#portFaceGlow-${i})`
     }), /*#__PURE__*/React.createElement("text", {
       x: ox,
-      y: oy + badgeSize / 2 + boardHexSize * 0.15,
+      y: oy + badgeR * 0.32,
+      textAnchor: "middle",
+      fontSize: badgeR * 1.0
+    }, portIcon), /*#__PURE__*/React.createElement("circle", {
+      cx: ox,
+      cy: oy,
+      r: badgeR,
+      fill: "none",
+      stroke: "rgba(255,255,255,0.25)",
+      strokeWidth: badgeR * 0.08
+    }), /*#__PURE__*/React.createElement("text", {
+      x: ox,
+      y: oy + badgeR + boardHexSize * 0.18,
       fontSize: Math.max(6, boardHexSize * 0.18),
       textAnchor: "middle",
       fontWeight: 800,
@@ -5581,8 +6220,24 @@ function Board({
     const dx = v2.x - v1.x,
       dy = v2.y - v1.y;
     const len = Math.sqrt(dx * dx + dy * dy) || 1;
-    const nx = -dy / len,
+    // Perpendicular — pick direction toward sea hex for ships
+    let nx = -dy / len,
       ny = dx / len;
+    if (pieceType === "ship" && e.hexIds?.length >= 2) {
+      const h0 = board.hexes[e.hexIds[0]],
+        h1 = board.hexes[e.hexIds[1]];
+      // Point sail toward whichever adjacent hex is sea (or less land-y)
+      const seaSide = h0?.resource === "sea" ? 0 : h1?.resource === "sea" ? 1 : 0;
+      const seaHex = board.hexes[e.hexIds[seaSide]];
+      if (seaHex) {
+        const toSeaX = seaHex.cx - mx,
+          toSeaY = seaHex.cy - my;
+        if (toSeaX * nx + toSeaY * ny < 0) {
+          nx = -nx;
+          ny = -ny;
+        }
+      }
+    }
     return /*#__PURE__*/React.createElement("g", {
       key: e.id
     }, valid && /*#__PURE__*/React.createElement("line", {
@@ -5591,7 +6246,7 @@ function Board({
       x2: v2.x,
       y2: v2.y,
       stroke: "transparent",
-      strokeWidth: 26,
+      strokeWidth: Math.max(16, boardHexSize * 0.55),
       strokeLinecap: "round",
       style: {
         cursor: "pointer"
@@ -5603,7 +6258,7 @@ function Board({
       x2: v2.x,
       y2: v2.y,
       stroke: "var(--gold)",
-      strokeWidth: 10,
+      strokeWidth: boardHexSize * 0.22,
       strokeLinecap: "round",
       opacity: 0.5
     }), ownerColor && pieceType === "ship" ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("line", {
@@ -5612,23 +6267,24 @@ function Board({
       x2: v2.x,
       y2: v2.y,
       stroke: "#1c1610",
-      strokeWidth: 5.5,
+      strokeWidth: boardHexSize * 0.12,
       strokeLinecap: "round",
-      strokeDasharray: "1,5"
+      strokeDasharray: `1,${boardHexSize * 0.1}`
     }), /*#__PURE__*/React.createElement("line", {
       x1: v1.x,
       y1: v1.y,
       x2: v2.x,
       y2: v2.y,
       stroke: ownerColor,
-      strokeWidth: 3.5,
+      strokeWidth: boardHexSize * 0.075,
       strokeLinecap: "round",
-      strokeDasharray: "1,5"
+      strokeDasharray: `1,${boardHexSize * 0.1}`
     }), /*#__PURE__*/React.createElement("polygon", {
-      points: `${mx + nx * 5},${my + ny * 5} ${mx - nx * 5},${my - ny * 5} ${mx + dx / len * 7},${my + dy / len * 7}`,
+      points: `${mx + nx * boardHexSize * 0.11},${my + ny * boardHexSize * 0.11} ${mx - nx * boardHexSize * 0.11},${my - ny * boardHexSize * 0.11} ${mx + nx * boardHexSize * 0.22},${my + ny * boardHexSize * 0.22}`,
       fill: ownerColor,
       stroke: "#1c1610",
-      strokeWidth: 0.8
+      strokeWidth: boardHexSize * 0.018,
+      opacity: 0.9
     })) : ownerColor ? /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("line", {
       x1: v1.x,
       y1: v1.y,
@@ -6042,36 +6698,49 @@ function HexTile({
     textAnchor: "middle",
     fontSize: hex.size * 0.4,
     opacity: 0.5
-  }, "〜"), hex.resource === "fog" && /*#__PURE__*/React.createElement("text", {
-    x: hex.cx,
-    y: hex.cy + hex.size * 0.15,
-    textAnchor: "middle",
-    fontSize: hex.size * 0.45,
-    opacity: 0.6
-  }, "🌫️"), hex.number && !cityName && /*#__PURE__*/React.createElement("g", null, /*#__PURE__*/React.createElement("ellipse", {
-    cx: hex.cx,
-    cy: hex.cy + hex.size * 0.05,
-    rx: hex.size * 0.3,
-    ry: hex.size * 0.28,
-    fill: "rgba(0,0,0,0.35)"
-  }), /*#__PURE__*/React.createElement("image", {
-    href: EMBEDDED_IMAGES.pip_bg,
-    x: hex.cx - hex.size * 0.32,
-    y: hex.cy - hex.size * 0.32,
-    width: hex.size * 0.65,
-    height: hex.size * 0.65,
-    preserveAspectRatio: "xMidYMid slice"
+  }, "〜"), hex.resource === "fog" && /*#__PURE__*/React.createElement(React.Fragment, null, /*#__PURE__*/React.createElement("polygon", {
+    points: hexCorners(hex.cx, hex.cy, hex.size * 0.95).map(p => `${p.x},${p.y}`).join(" "),
+    fill: "rgba(20,30,40,0.55)"
   }), /*#__PURE__*/React.createElement("text", {
     x: hex.cx,
-    y: hex.cy + hex.size * 0.09,
+    y: hex.cy + hex.size * 0.12,
+    textAnchor: "middle",
+    fontSize: hex.size * 0.5,
+    opacity: 0.5,
+    fill: "#8ab0cc"
+  }, "?")), hex.number && !cityName && /*#__PURE__*/React.createElement("g", null, /*#__PURE__*/React.createElement("circle", {
+    cx: hex.cx,
+    cy: hex.cy + hex.size * 0.04,
+    r: hex.size * 0.3,
+    fill: "url(#pipRim)"
+  }), /*#__PURE__*/React.createElement("circle", {
+    cx: hex.cx,
+    cy: hex.cy + hex.size * 0.04,
+    r: hex.size * 0.24,
+    fill: "url(#pipFace)"
+  }), /*#__PURE__*/React.createElement("circle", {
+    cx: hex.cx,
+    cy: hex.cy + hex.size * 0.04,
+    r: hex.size * 0.24,
+    fill: "url(#pipGrain)"
+  }), /*#__PURE__*/React.createElement("circle", {
+    cx: hex.cx,
+    cy: hex.cy + hex.size * 0.04,
+    r: hex.size * 0.3,
+    fill: "none",
+    stroke: "rgba(255,255,255,0.18)",
+    strokeWidth: hex.size * 0.018
+  }), /*#__PURE__*/React.createElement("text", {
+    x: hex.cx,
+    y: hex.cy + hex.size * 0.1,
     textAnchor: "middle",
     fontFamily: "'Fraunces', serif",
-    fontSize: hex.size * 0.3,
+    fontSize: hex.size * 0.29,
     fontWeight: 800,
-    fill: hot ? "#ff4a3d" : "#1a1206",
+    fill: hot ? "#cc1a0a" : "#2a1a06",
     style: {
       paintOrder: "stroke",
-      stroke: "rgba(255,240,200,0.85)",
+      stroke: hot ? "rgba(255,200,150,0.9)" : "rgba(255,240,190,0.9)",
       strokeWidth: 2.5
     }
   }, hex.number), Array.from({
@@ -6079,9 +6748,9 @@ function HexTile({
   }).map((_, i) => /*#__PURE__*/React.createElement("circle", {
     key: i,
     cx: dotStartX + i * dotSpacing,
-    cy: hex.cy + hex.size * 0.22,
-    r: hex.size * 0.02,
-    fill: hot ? "#ff4a3d" : "#f4e5b8"
+    cy: hex.cy + hex.size * 0.225,
+    r: hex.size * 0.022,
+    fill: hot ? "#cc1a0a" : "#8a6020"
   }))), hex.number && cityName && /*#__PURE__*/React.createElement("g", null, /*#__PURE__*/React.createElement("rect", {
     x: hex.cx - hex.size * 0.46,
     y: hex.cy - hex.size * 0.35,
@@ -6090,14 +6759,24 @@ function HexTile({
     rx: hex.size * 0.24,
     fill: "rgba(0,0,0,0.35)",
     transform: `translate(1.5, 2.5)`
-  }), /*#__PURE__*/React.createElement("image", {
-    href: EMBEDDED_IMAGES.pip_bg,
-    x: hex.cx - hex.size * 0.46,
-    y: hex.cy - hex.size * 0.35,
-    width: hex.size * 0.92,
-    height: hex.size * 0.7,
-    preserveAspectRatio: "xMidYMid slice",
-    clipPath: "inset(0 round 11px)"
+  }), /*#__PURE__*/React.createElement("ellipse", {
+    cx: hex.cx,
+    cy: hex.cy,
+    rx: hex.size * 0.44,
+    ry: hex.size * 0.32,
+    fill: "url(#pipRim)"
+  }), /*#__PURE__*/React.createElement("ellipse", {
+    cx: hex.cx,
+    cy: hex.cy,
+    rx: hex.size * 0.36,
+    ry: hex.size * 0.25,
+    fill: "url(#pipFace)"
+  }), /*#__PURE__*/React.createElement("ellipse", {
+    cx: hex.cx,
+    cy: hex.cy,
+    rx: hex.size * 0.36,
+    ry: hex.size * 0.25,
+    fill: "url(#pipGrain)"
   }), /*#__PURE__*/React.createElement("rect", {
     x: hex.cx - hex.size * 0.46,
     y: hex.cy - hex.size * 0.35,
@@ -7105,6 +7784,18 @@ function DevSandbox({
       return s;
     });
   }
+  function devUndo() {
+    mutate(s => {
+      if (!s.undoSnapshot) {
+        addLog(s, "🛠️ Dev: nothing to undo yet");
+        return s;
+      }
+      const restored = s.undoSnapshot.snapshot;
+      restored.undoSnapshot = null;
+      addLog(restored, "🛠️ Dev: undid last action");
+      return restored;
+    });
+  }
   function rollDice(n) {
     mutate(s => {
       s.lastRoll = n;
@@ -7306,6 +7997,10 @@ function DevSandbox({
   }, /*#__PURE__*/React.createElement("span", {
     style: label
   }, "Fog"), chipBtn("Reveal all fog", revealAllFog, "#2a3a5a")), /*#__PURE__*/React.createElement("div", {
+    style: row
+  }, /*#__PURE__*/React.createElement("span", {
+    style: label
+  }, "Undo"), chipBtn("↩ Undo last action", devUndo, "#2a3a5a")), /*#__PURE__*/React.createElement("div", {
     style: row
   }, /*#__PURE__*/React.createElement("span", {
     style: label
@@ -9579,6 +10274,7 @@ function setupPlaceRoad(s, playerId, eid) {
   } else {
     p.roadsLeft = Math.max(0, (p.roadsLeft ?? 15) - 1);
   }
+  revealFogHexes(s, playerId, eid);
   addLog(s, `${p.name} placed a ${placeShip ? "ship" : "road"}.`, {
     forAll: true,
     sound: "build",
@@ -9897,6 +10593,37 @@ function resolveSteal(s, thiefId, victimId) {
   s.robberStealChoices = null;
   return s;
 }
+
+// Seafarers fog tile reveal: when a road or ship is placed on an edge,
+// any adjacent fog hexes are revealed as random land resources.
+// The revealer gets 1 free resource of the revealed type.
+function revealFogHexes(s, playerId, eid) {
+  const edge = s.board.edges.find(e => e.id === eid);
+  if (!edge) return;
+  const p = s.players.find(pl => pl.id === playerId);
+  (edge.hexIds || []).forEach(hi => {
+    const hex = s.board.hexes[hi];
+    if (!hex || hex.resource !== "fog") return;
+    // Pick a random land resource
+    const landRes = ["wood", "brick", "sheep", "wheat", "ore"];
+    const revealed = landRes[Math.floor(Math.random() * landRes.length)];
+    hex.resource = revealed;
+    // Assign a number token if it doesn't have one
+    if (!hex.number) {
+      const nums = [3, 4, 5, 6, 8, 9, 10, 11];
+      hex.number = nums[Math.floor(Math.random() * nums.length)];
+    }
+    // Give revealer 1 free resource
+    if (p && s.bank[revealed] > 0) {
+      p.resources[revealed] = (p.resources[revealed] || 0) + 1;
+      s.bank[revealed] -= 1;
+    }
+    addLog(s, `🌫️ ${p?.name || "Someone"} discovered a ${revealed} tile! +1 ${revealed}`, {
+      forAll: true,
+      sound: "build"
+    });
+  });
+}
 function buildRoad(s, playerId, eid) {
   const p = s.players.find(pl => pl.id === playerId);
   if (!canAfford(p.resources, COSTS.road)) return s;
@@ -9907,6 +10634,7 @@ function buildRoad(s, playerId, eid) {
   s.board.roadTypes = s.board.roadTypes || {};
   s.board.roadTypes[eid] = "road";
   p.roadsLeft = (p.roadsLeft ?? 15) - 1;
+  revealFogHexes(s, playerId, eid);
   addLog(s, `${p.name} built a road.`, {
     forAll: true,
     sound: "build",
@@ -9927,6 +10655,7 @@ function buildShip(s, playerId, eid) {
   s.board.roadTypes = s.board.roadTypes || {};
   s.board.roadTypes[eid] = "ship";
   p.shipsLeft = (p.shipsLeft ?? 15) - 1;
+  revealFogHexes(s, playerId, eid);
   addLog(s, `${p.name} built a ship.`, {
     forAll: true,
     sound: "build",
