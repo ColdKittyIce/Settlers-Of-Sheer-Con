@@ -6309,36 +6309,36 @@ function HexTile({
     }
   }, /*#__PURE__*/React.createElement("defs", null, /*#__PURE__*/React.createElement("linearGradient", {
     id: `hf-${hid}`,
-    x1: x1,
-    y1: y1,
-    x2: x2,
-    y2: y2,
+    x1: cx,
+    y1: cy - s * 0.85,
+    x2: cx,
+    y2: cy + s * 0.85,
     gradientUnits: "userSpaceOnUse"
   }, /*#__PURE__*/React.createElement("stop", {
     offset: "0%",
     stopColor: cfg.h
   }), /*#__PURE__*/React.createElement("stop", {
-    offset: "40%",
+    offset: "45%",
     stopColor: cfg.b
   }), /*#__PURE__*/React.createElement("stop", {
     offset: "100%",
     stopColor: cfg.d
   })), /*#__PURE__*/React.createElement("linearGradient", {
     id: `bv-${hid}`,
-    x1: cx - s * 0.6,
-    y1: cy - s * 0.8,
+    x1: cx - s * 0.7,
+    y1: cy - s * 0.85,
     x2: cx + s * 0.5,
-    y2: cy + s * 0.6,
+    y2: cy + s * 0.7,
     gradientUnits: "userSpaceOnUse"
   }, /*#__PURE__*/React.createElement("stop", {
     offset: "0%",
-    stopColor: "rgba(255,255,255,0.28)"
+    stopColor: "rgba(255,255,255,0.3)"
   }), /*#__PURE__*/React.createElement("stop", {
-    offset: "35%",
-    stopColor: "rgba(255,255,255,0.05)"
+    offset: "30%",
+    stopColor: "rgba(255,255,255,0.08)"
   }), /*#__PURE__*/React.createElement("stop", {
     offset: "100%",
-    stopColor: "rgba(0,0,0,0.2)"
+    stopColor: "rgba(0,0,0,0.25)"
   })), cfg.frame && /*#__PURE__*/React.createElement("linearGradient", {
     id: `fr-${hid}`,
     x1: cx - s,
@@ -6361,18 +6361,44 @@ function HexTile({
   }), /*#__PURE__*/React.createElement("stop", {
     offset: "100%",
     stopColor: "#6a3808"
-  })), /*#__PURE__*/React.createElement("radialGradient", {
-    id: `vs-${hid}`,
-    cx: cx,
-    cy: cy,
-    r: s * 0.82,
+  })), /*#__PURE__*/React.createElement("linearGradient", {
+    id: `es-${hid}`,
+    x1: cx,
+    y1: cy - s * 0.82,
+    x2: cx,
+    y2: cy + s * 0.82,
     gradientUnits: "userSpaceOnUse"
   }, /*#__PURE__*/React.createElement("stop", {
-    offset: "65%",
+    offset: "0%",
+    stopColor: "rgba(0,0,0,0.35)"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "18%",
+    stopColor: "transparent"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "82%",
     stopColor: "transparent"
   }), /*#__PURE__*/React.createElement("stop", {
     offset: "100%",
-    stopColor: "rgba(0,0,0,0.4)"
+    stopColor: "rgba(0,0,0,0.45)"
+  })), /*#__PURE__*/React.createElement("linearGradient", {
+    id: `es2-${hid}`,
+    x1: cx - s * 0.82,
+    y1: cy,
+    x2: cx + s * 0.82,
+    y2: cy,
+    gradientUnits: "userSpaceOnUse"
+  }, /*#__PURE__*/React.createElement("stop", {
+    offset: "0%",
+    stopColor: "rgba(0,0,0,0.3)"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "15%",
+    stopColor: "transparent"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "85%",
+    stopColor: "transparent"
+  }), /*#__PURE__*/React.createElement("stop", {
+    offset: "100%",
+    stopColor: "rgba(0,0,0,0.3)"
   })), /*#__PURE__*/React.createElement("clipPath", {
     id: `ci-${hid}`
   }, /*#__PURE__*/React.createElement("polygon", {
@@ -6392,7 +6418,10 @@ function HexTile({
     hex: hex
   })), /*#__PURE__*/React.createElement("polygon", {
     points: innerPts,
-    fill: `url(#vs-${hid})`
+    fill: `url(#es-${hid})`
+  }), /*#__PURE__*/React.createElement("polygon", {
+    points: innerPts,
+    fill: `url(#es2-${hid})`
   }), cfg.frame && /*#__PURE__*/React.createElement("polygon", {
     points: innerPts,
     fill: "none",
