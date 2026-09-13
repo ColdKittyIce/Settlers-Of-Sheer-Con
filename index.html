@@ -74,7 +74,8 @@ const DEFAULT_HEX_COLORS = {
   ore: "#6a7480",
   desert: "#c9b072",
   sea: "#0d4c63",
-  gold: "#c49a2e"
+  gold: "#c49a2e",
+  fog: "#2a3a4a"
 };
 function shadeHex(hex, pct) {
   if (!hex || hex.length < 7) return hex;
@@ -3186,10 +3187,24 @@ function deleteCustomMap(id) {
 }
 // Inject custom maps into MAPS at load time
 Object.assign(MAPS, loadCustomMaps());
+function autoScaleSize(coords, requestedSize) {
+  // Scale down hex size for large boards so they fit the viewport comfortably.
+  // Target: board pixel width ~900px. One hex is sqrt(3)*size wide.
+  // Estimate board width from axial q range × hex width.
+  if (!coords || coords.length === 0) return requestedSize;
+  const qs = coords.map(c => c.q + c.r / 2);
+  const qRange = Math.max(...qs) - Math.min(...qs);
+  const hexWidth = Math.sqrt(3) * requestedSize;
+  const estWidth = qRange * hexWidth;
+  if (estWidth <= 900) return requestedSize;
+  const scaled = Math.floor(requestedSize * 900 / estWidth);
+  return Math.max(14, scaled);
+}
 function createNewGame(hostId, hostName, maxPlayers, mapId = "standard", options = {}, hostColor = null, hostIcon = null, mapOpts = {}) {
   const map = MAPS[mapId] || MAPS.standard;
   const built = map.build(maxPlayers, mapOpts);
-  const geo = assignBoard(built.coords, built.size, built);
+  const adjustedSize = autoScaleSize(built.coords, built.size);
+  const geo = assignBoard(built.coords, adjustedSize, built);
   const mergedOptions = {
     ...DEFAULT_OPTIONS,
     ...options
@@ -5252,7 +5267,7 @@ function Board({
       width: `${100 * zoom}%`,
       height: "auto"
     }
-  }, /*#__PURE__*/React.createElement("defs", null, ["wood", "brick", "sheep", "wheat", "ore", "desert", "sea", "gold"].map(r => {
+  }, /*#__PURE__*/React.createElement("defs", null, ["wood", "brick", "sheep", "wheat", "ore", "desert", "sea", "gold", "fog"].map(r => {
     const customUrl = hexImages[r];
     if (customUrl) {
       return /*#__PURE__*/React.createElement("pattern", {
@@ -5874,7 +5889,13 @@ function HexTile({
     textAnchor: "middle",
     fontSize: hex.size * 0.4,
     opacity: 0.5
-  }, "〜"), hex.number && !cityName && /*#__PURE__*/React.createElement("g", null, /*#__PURE__*/React.createElement("ellipse", {
+  }, "〜"), hex.resource === "fog" && /*#__PURE__*/React.createElement("text", {
+    x: hex.cx,
+    y: hex.cy + hex.size * 0.15,
+    textAnchor: "middle",
+    fontSize: hex.size * 0.45,
+    opacity: 0.6
+  }, "🌫️"), hex.number && !cityName && /*#__PURE__*/React.createElement("g", null, /*#__PURE__*/React.createElement("ellipse", {
     cx: hex.cx,
     cy: hex.cy + 2.5,
     rx: 14,
@@ -7182,7 +7203,7 @@ function DevTabTheme({
       gridTemplateColumns: "1fr 1fr",
       gap: 8
     }
-  }, ["wood", "brick", "sheep", "wheat", "ore", "desert", "sea", "gold"].map(r => {
+  }, ["wood", "brick", "sheep", "wheat", "ore", "desert", "sea", "gold", "fog"].map(r => {
     const current = draft.hexColors && draft.hexColors[r] || DEFAULT_HEX_COLORS[r];
     return /*#__PURE__*/React.createElement("label", {
       key: r,
