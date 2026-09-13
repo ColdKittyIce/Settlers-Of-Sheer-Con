@@ -2628,20 +2628,28 @@ function assignBoard(coords, size, options = {}) {
       edges: shuffle(edges)
     })).sort((a, b) => b.edges.length - a.edges.length);
     // Round-robin: give each coastal land hex up to 1 port, cycling until we hit portTotal.
+    // Enforce minimum spacing: no two port anchor hexes within axial distance 1.
+    const hexDist = (ai, bi) => {
+      const a = geo.hexes[ai],
+        b = geo.hexes[bi];
+      if (!a || !b) return 99;
+      return Math.max(Math.abs(a.q - b.q), Math.abs(a.r - b.r), Math.abs(-a.q - a.r - (-b.q - b.r)));
+    };
+    const tooClose = idx => ports.some(p => hexDist(p.hexIdx, idx) < 2);
     const usedLand = new Set();
     let round = 0;
-    while (ports.length < portTotal && round < 4) {
+    while (ports.length < portTotal && round < 8) {
       let placedThisRound = 0;
       for (const {
         idx,
         edges
       } of landHexes) {
         if (ports.length >= portTotal) break;
-        // In first round, only one port per land hex; later rounds can double up.
         if (round === 0 && usedLand.has(idx)) continue;
         if (edges.length === 0) continue;
+        // Skip if too close to an already-placed port (only enforce in early rounds)
+        if (round < 2 && tooClose(idx)) continue;
         const e = edges.shift();
-        // Prefer land hex as hexIdx so the badge tilts inland (toward the settlement)
         const landIdx = isLand(e.hexIds[0]) ? e.hexIds[0] : e.hexIds[1];
         ports.push({
           edgeId: e.id,
@@ -2658,18 +2666,36 @@ function assignBoard(coords, size, options = {}) {
     }
   } else {
     // No sea hexes — fall back to outer-boundary loops (classic Catan style).
+    // Enforce minimum spacing: no two ports on adjacent hexes (axial dist < 2).
+    const hexDist2 = (ai, bi) => {
+      const a = geo.hexes[ai],
+        b = geo.hexes[bi];
+      if (!a || !b) return 99;
+      return Math.max(Math.abs(a.q - b.q), Math.abs(a.r - b.r), Math.abs(-a.q - a.r - (-b.q - b.r)));
+    };
+    const tooClose2 = hexIdx => ports.some(p => hexDist2(p.hexIdx, hexIdx) < 2);
     loops.forEach(loop => {
       const share = Math.max(1, Math.round(portTotal * loop.length / totalBoundaryLen));
       const step = Math.max(2, Math.floor(loop.length / share));
       for (let i = 0; i < share && i * step < loop.length; i++) {
         const e = loop[i * step];
-        ports.push({
-          edgeId: e.id,
-          type: portTypes[typeCursor % portTypes.length],
-          vertexIds: [e.v1, e.v2],
-          hexIdx: e.hexIds[0]
-        });
-        typeCursor += 1;
+        const hexIdx = e.hexIds[0];
+        // If too close, walk forward along the loop to find a valid spot
+        let offset = 0;
+        let chosen = e;
+        while (tooClose2(chosen.hexIds[0]) && offset < loop.length) {
+          offset++;
+          chosen = loop[(i * step + offset) % loop.length];
+        }
+        if (!tooClose2(chosen.hexIds[0])) {
+          ports.push({
+            edgeId: chosen.id,
+            type: portTypes[typeCursor % portTypes.length],
+            vertexIds: [chosen.v1, chosen.v2],
+            hexIdx: chosen.hexIds[0]
+          });
+          typeCursor += 1;
+        }
       }
     });
   }
