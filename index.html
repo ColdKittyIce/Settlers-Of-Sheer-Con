@@ -2872,6 +2872,13 @@ function isValidSettlementSpot(board, vertexId, playerId, requireRoad) {
     const other = edgeOtherVertex(e, vertexId);
     if (buildingAt(board, other)) return false;
   }
+  // Must touch at least one land hex (not sea, not fog — unplayable terrain)
+  const v = board.vertices.find(x => x.id === vertexId);
+  if (v) {
+    const adjHexes = (v.hexIds || []).map(i => board.hexes[i]).filter(Boolean);
+    const touchesLand = adjHexes.some(h => h.resource !== "sea" && h.resource !== "fog");
+    if (!touchesLand) return false;
+  }
   if (requireRoad) {
     const connected = adjEdges.some(e => roadOwnerAt(board, e.id) === playerId);
     if (!connected) return false;
