@@ -6067,202 +6067,265 @@ function hashStr(s) {
   for (let i = 0; i < s.length; i++) h = h * 31 + s.charCodeAt(i) | 0;
   return Math.abs(h);
 }
+
+// ── Texture helper functions (used by HexDecor) ──
+function woodTexSVG(cx, cy, r) {
+  const positions = [[cx - r * 0.45, cy - r * 0.3], [cx + r * 0.35, cy - r * 0.45], [cx - r * 0.1, cy - r * 0.65], [cx - r * 0.55, cy + r * 0.25], [cx + r * 0.45, cy + r * 0.15], [cx + r * 0.05, cy + r * 0.45], [cx - r * 0.2, cy + r * 0.05], [cx + r * 0.25, cy - r * 0.1], [cx - r * 0.7, cy - r * 0.1]];
+  const h = r * 0.48,
+    w = r * 0.2;
+  return positions.map(([tx, ty], i) => /*#__PURE__*/React.createElement("g", {
+    key: i
+  }, /*#__PURE__*/React.createElement("polygon", {
+    points: `${tx},${ty - h} ${tx - w * 1.1},${ty - h * 0.35} ${tx + w * 1.1},${ty - h * 0.35}`,
+    fill: "#1a2518"
+  }), /*#__PURE__*/React.createElement("polygon", {
+    points: `${tx},${ty - h * 0.55} ${tx - w * 1.3},${ty - h * 0.0} ${tx + w * 1.3},${ty - h * 0.0}`,
+    fill: "#161e14"
+  }), /*#__PURE__*/React.createElement("polygon", {
+    points: `${tx},${ty - h * 0.15} ${tx - w * 1.5},${ty + h * 0.32} ${tx + w * 1.5},${ty + h * 0.32}`,
+    fill: "#121c10"
+  }), /*#__PURE__*/React.createElement("rect", {
+    x: tx - w * 0.12,
+    y: ty + h * 0.32,
+    width: w * 0.24,
+    height: h * 0.22,
+    fill: "#0a0804"
+  }), /*#__PURE__*/React.createElement("polygon", {
+    points: `${tx},${ty - h} ${tx - w * 0.35},${ty - h * 0.5} ${tx},${ty - h * 0.42}`,
+    fill: "rgba(50,70,35,0.35)"
+  })));
+}
+function brickTexSVG(cx, cy, r) {
+  const bw = r * 0.38,
+    bh = r * 0.155;
+  const rows = Math.ceil(r * 2 / bh) + 2;
+  const cols = Math.ceil(r * 2 / bw) + 3;
+  const items = [];
+  for (let row = 0; row < rows; row++) {
+    const y = cy - r - bh + row * (bh + 1);
+    const offset = row % 2 * bw * 0.52;
+    for (let col = -2; col < cols; col++) {
+      const x = cx - r - bw + col * (bw + 1) + offset;
+      items.push(/*#__PURE__*/React.createElement("g", {
+        key: `${row}-${col}`
+      }, /*#__PURE__*/React.createElement("rect", {
+        x: x,
+        y: y,
+        width: bw,
+        height: bh,
+        rx: 1,
+        fill: "rgba(50,12,4,0.48)",
+        stroke: "rgba(25,6,2,0.3)",
+        strokeWidth: 0.6
+      }), /*#__PURE__*/React.createElement("line", {
+        x1: x + 1,
+        y1: y + 1,
+        x2: x + bw - 1,
+        y2: y + 1,
+        stroke: "rgba(180,90,50,0.15)",
+        strokeWidth: 0.5
+      })));
+    }
+  }
+  return items;
+}
+function sheepTexSVG(cx, cy, r) {
+  const items = [];
+  for (let gx = cx - r; gx < cx + r; gx += 5) {
+    for (let gy = cy - r; gy < cy + r; gy += 7) {
+      const jx = Math.sin(gx * 0.8 + gy * 0.4) * 2;
+      items.push(/*#__PURE__*/React.createElement("g", {
+        key: `${gx}-${gy}`
+      }, /*#__PURE__*/React.createElement("line", {
+        x1: gx + jx,
+        y1: gy + 6,
+        x2: gx + jx - 1.5,
+        y2: gy,
+        stroke: "rgba(25,65,5,0.5)",
+        strokeWidth: 1.1
+      }), /*#__PURE__*/React.createElement("line", {
+        x1: gx + jx,
+        y1: gy + 6,
+        x2: gx + jx + 2,
+        y2: gy + 1,
+        stroke: "rgba(25,65,5,0.38)",
+        strokeWidth: 0.9
+      })));
+    }
+  }
+  return items;
+}
+function wheatTexSVG(cx, cy, r) {
+  const items = [];
+  for (let wx = cx - r * 0.85; wx <= cx + r * 0.85; wx += r * 0.15) {
+    const lean = (wx - cx) * 0.1;
+    const h = r * 0.8,
+      base = cy + r * 0.5;
+    const grains = [0, 1, 2, 3, 4].map(k => {
+      const hx = wx + lean,
+        hy = base - h + k * r * 0.09;
+      return /*#__PURE__*/React.createElement("ellipse", {
+        key: k,
+        cx: hx + k % 2 * 1.5 - 0.75,
+        cy: hy,
+        rx: r * 0.04,
+        ry: r * 0.055,
+        fill: "rgba(160,110,15,0.75)",
+        transform: `rotate(${-12 + k * 4},${hx},${hy})`
+      });
+    });
+    items.push(/*#__PURE__*/React.createElement("g", {
+      key: wx
+    }, /*#__PURE__*/React.createElement("line", {
+      x1: wx,
+      y1: base,
+      x2: wx + lean,
+      y2: base - h,
+      stroke: "rgba(100,70,10,0.6)",
+      strokeWidth: 1.1
+    }), grains));
+  }
+  return items;
+}
+function oreTexSVG(cx, cy, r) {
+  const cracks = [0, 1, 2, 3, 4].map(i => {
+    const sx = cx - r * 0.7 + i * r * 0.35,
+      sy = cy - r * 0.75;
+    const pts = [0, 1, 2, 3, 4, 5, 6, 7].map(j => `${sx + (j % 2 ? r * 0.07 : -r * 0.07)},${sy + j * r * 0.22}`).join(' L');
+    return /*#__PURE__*/React.createElement("path", {
+      key: i,
+      d: `M${sx},${sy} L${pts}`,
+      stroke: `rgba(12,18,28,${0.5 + i * 0.08})`,
+      strokeWidth: 0.8 + i % 2 * 0.5,
+      fill: "none"
+    });
+  });
+  const strata = [0, 1, 2, 3, 4, 5].map(i => {
+    const y = cy - r * 0.6 + i * r * 0.26;
+    return /*#__PURE__*/React.createElement("line", {
+      key: i,
+      x1: cx - r,
+      y1: y,
+      x2: cx + r,
+      y2: y + r * 0.08,
+      stroke: `rgba(20,30,45,0.3)`,
+      strokeWidth: 0.6 + i % 2 * 0.3
+    });
+  });
+  return [...cracks, ...strata];
+}
+function desertTexSVG(cx, cy, r) {
+  return [0, 1, 2, 3, 4, 5, 6, 7].map(i => {
+    const y = cy - r * 0.7 + i * r * 0.2;
+    const amp = r * (0.03 + i * 0.008);
+    return /*#__PURE__*/React.createElement("path", {
+      key: i,
+      d: `M${cx - r},${y} Q${cx - r * 0.5},${y - amp} ${cx},${y} Q${cx + r * 0.5},${y + amp} ${cx + r},${y}`,
+      stroke: `rgba(130,95,35,${0.12 + i * 0.03})`,
+      strokeWidth: 0.7 + i * 0.1,
+      fill: "none"
+    });
+  });
+}
+function seaTexSVG(cx, cy, r) {
+  return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(i => {
+    const y = cy - r * 0.8 + i * r * 0.16;
+    const amp = r * 0.042,
+      freq = r * 0.22;
+    const steps = [];
+    for (let x = cx - r; x <= cx + r; x += freq) {
+      steps.push(`Q${x + freq * 0.25},${y - amp} ${x + freq * 0.5},${y} Q${x + freq * 0.75},${y + amp} ${x + freq},${y}`);
+    }
+    return /*#__PURE__*/React.createElement("path", {
+      key: i,
+      d: `M${cx - r},${y} ${steps.join(' ')}`,
+      stroke: `rgba(80,155,210,${0.28 + i * 0.04})`,
+      strokeWidth: 0.85 + i * 0.06,
+      fill: "none"
+    });
+  });
+}
+function goldTexSVG(cx, cy, r) {
+  return [0, 1, 2, 3, 4, 5, 6, 7, 8].map(i => {
+    const a = i * (Math.PI * 2 / 9),
+      ra = r * (0.25 + i % 3 * 0.2);
+    const sx = cx + Math.cos(a) * ra,
+      sy = cy + Math.sin(a) * ra,
+      sr = r * 0.085;
+    const pts = `${sx},${sy - sr} ${sx + sr * 0.35},${sy - sr * 0.35} ${sx + sr},${sy} ${sx + sr * 0.35},${sy + sr * 0.35} ${sx},${sy + sr} ${sx - sr * 0.35},${sy + sr * 0.35} ${sx - sr},${sy} ${sx - sr * 0.35},${sy - sr * 0.35}`;
+    return /*#__PURE__*/React.createElement("polygon", {
+      key: i,
+      points: pts,
+      fill: "rgba(240,195,30,0.45)"
+    });
+  });
+}
 function HexDecor({
   hex
 }) {
-  const s = hex.size;
-  const u = s / 46; // scale factor relative to standard hex size of 46
-  const seed = hashStr(hex.id);
-  const jitter = (n, range) => ((seed >> n) % 100 / 100 - 0.5) * range;
-  const positions = [{
-    x: hex.cx - s * 0.52 + jitter(1, 6),
-    y: hex.cy + s * 0.34 + jitter(2, 6)
-  }, {
-    x: hex.cx + s * 0.52 + jitter(3, 6),
-    y: hex.cy + s * 0.34 + jitter(4, 6)
-  }, {
-    x: hex.cx + jitter(5, 8),
-    y: hex.cy - s * 0.6 + jitter(6, 5)
-  }];
-  const op = (base, n) => base + jitter(n, 0.22);
-  const r = hex.resource;
-  if (r === "wood") {
-    return /*#__PURE__*/React.createElement(React.Fragment, null, positions.map((p, i) => /*#__PURE__*/React.createElement("g", {
-      key: i,
-      opacity: op(0.55, i + 7)
-    }, /*#__PURE__*/React.createElement("polygon", {
-      points: `${p.x},${p.y - 7 * u} ${p.x - 5 * u},${p.y + 3 * u} ${p.x + 5 * u},${p.y + 3 * u}`,
-      fill: "#1f3d1a"
-    }), /*#__PURE__*/React.createElement("rect", {
-      x: p.x - 1 * u,
-      y: p.y + 3 * u,
-      width: 2 * u,
-      height: 4 * u,
-      fill: "#3a2414"
-    }))));
-  }
-  if (r === "brick") {
-    return /*#__PURE__*/React.createElement(React.Fragment, null, positions.map((p, i) => /*#__PURE__*/React.createElement("g", {
-      key: i,
-      opacity: op(0.5, i + 7),
-      stroke: "#5a1f00",
-      strokeWidth: 0.9 * u,
-      fill: "none"
-    }, /*#__PURE__*/React.createElement("rect", {
-      x: p.x - 6 * u,
-      y: p.y - 3 * u,
-      width: 5 * u,
-      height: 3 * u
-    }), /*#__PURE__*/React.createElement("rect", {
-      x: p.x,
-      y: p.y - 3 * u,
-      width: 5 * u,
-      height: 3 * u
-    }), /*#__PURE__*/React.createElement("rect", {
-      x: p.x - 3 * u,
-      y: p.y,
-      width: 5 * u,
-      height: 3 * u
-    }))));
-  }
-  if (r === "sheep") {
-    return /*#__PURE__*/React.createElement(React.Fragment, null, positions.map((p, i) => /*#__PURE__*/React.createElement("g", {
-      key: i,
-      opacity: op(0.65, i + 7)
-    }, /*#__PURE__*/React.createElement("circle", {
-      cx: p.x - 4 * u,
-      cy: p.y,
-      r: 3.2 * u,
-      fill: "#f5f0e0"
-    }), /*#__PURE__*/React.createElement("circle", {
-      cx: p.x,
-      cy: p.y - 2 * u,
-      r: 3.6 * u,
-      fill: "#f5f0e0"
-    }), /*#__PURE__*/React.createElement("circle", {
-      cx: p.x + 4 * u,
-      cy: p.y,
-      r: 3.2 * u,
-      fill: "#f5f0e0"
-    }))));
-  }
-  if (r === "wheat") {
-    return /*#__PURE__*/React.createElement(React.Fragment, null, positions.map((p, i) => /*#__PURE__*/React.createElement("g", {
-      key: i,
-      opacity: op(0.65, i + 7),
-      stroke: "#6b4a10",
-      strokeWidth: u,
-      strokeLinecap: "round"
-    }, /*#__PURE__*/React.createElement("line", {
-      x1: p.x,
-      y1: p.y + 5 * u,
-      x2: p.x,
-      y2: p.y - 5 * u
-    }), /*#__PURE__*/React.createElement("line", {
-      x1: p.x,
-      y1: p.y - 3 * u,
-      x2: p.x - 3 * u,
-      y2: p.y - 6 * u
-    }), /*#__PURE__*/React.createElement("line", {
-      x1: p.x,
-      y1: p.y - 3 * u,
-      x2: p.x + 3 * u,
-      y2: p.y - 6 * u
-    }), /*#__PURE__*/React.createElement("line", {
-      x1: p.x,
-      y1: p.y,
-      x2: p.x - 3 * u,
-      y2: p.y - 3 * u
-    }), /*#__PURE__*/React.createElement("line", {
-      x1: p.x,
-      y1: p.y,
-      x2: p.x + 3 * u,
-      y2: p.y - 3 * u
-    }))));
-  }
-  if (r === "ore") {
-    return /*#__PURE__*/React.createElement(React.Fragment, null, positions.map((p, i) => /*#__PURE__*/React.createElement("polygon", {
-      key: i,
-      opacity: op(0.55, i + 7),
-      points: `${p.x - 5 * u},${p.y + 4 * u} ${p.x - 2 * u},${p.y - 5 * u} ${p.x + 2 * u},${p.y - 2 * u} ${p.x + 5 * u},${p.y + 4 * u}`,
-      fill: "#3a4147"
-    })));
-  }
-  if (r === "desert") {
-    return /*#__PURE__*/React.createElement(React.Fragment, null, positions.slice(0, 2).map((p, i) => /*#__PURE__*/React.createElement("g", {
-      key: i,
-      opacity: op(0.5, i + 7),
-      stroke: "#7a6420",
-      strokeWidth: 2 * u,
-      strokeLinecap: "round"
-    }, /*#__PURE__*/React.createElement("line", {
-      x1: p.x,
-      y1: p.y + 5 * u,
-      x2: p.x,
-      y2: p.y - 5 * u
-    }), /*#__PURE__*/React.createElement("line", {
-      x1: p.x,
-      y1: p.y - 1 * u,
-      x2: p.x - 4 * u,
-      y2: p.y - 4 * u
-    }), /*#__PURE__*/React.createElement("line", {
-      x1: p.x,
-      y1: p.y + 1 * u,
-      x2: p.x + 4 * u,
-      y2: p.y - 2 * u
-    }))));
-  }
+  const cx = hex.cx,
+    cy = hex.cy,
+    r = hex.size * 0.82;
+  const r2 = hex.resource;
+  if (r2 === "wood") return /*#__PURE__*/React.createElement(React.Fragment, null, woodTexSVG(cx, cy, r));
+  if (r2 === "brick") return /*#__PURE__*/React.createElement(React.Fragment, null, brickTexSVG(cx, cy, r));
+  if (r2 === "sheep") return /*#__PURE__*/React.createElement(React.Fragment, null, sheepTexSVG(cx, cy, r));
+  if (r2 === "wheat") return /*#__PURE__*/React.createElement(React.Fragment, null, wheatTexSVG(cx, cy, r));
+  if (r2 === "ore") return /*#__PURE__*/React.createElement(React.Fragment, null, oreTexSVG(cx, cy, r));
+  if (r2 === "desert") return /*#__PURE__*/React.createElement(React.Fragment, null, desertTexSVG(cx, cy, r));
+  if (r2 === "sea") return /*#__PURE__*/React.createElement(React.Fragment, null, seaTexSVG(cx, cy, r));
+  if (r2 === "gold") return /*#__PURE__*/React.createElement(React.Fragment, null, goldTexSVG(cx, cy, r));
   return null;
 }
 
-// Resource fill config: base color, mid, highlight color, dark
+// Resource fill config: base color, mid, highlight color, dark// Resource fill config: base color, mid, highlight color, dark
 const HEX_FILL_CFG = {
   wood: {
-    b: "#2a5c1a",
-    h: "#5aaa28",
-    d: "#0e2808",
+    b: "#1e4c10",
+    h: "#3a7a20",
+    d: "#0a2406",
     frame: true
   },
   brick: {
-    b: "#a04820",
-    h: "#d06030",
-    d: "#6a1808",
+    b: "#8c3814",
+    h: "#c05a2a",
+    d: "#4a1a06",
     frame: true
   },
   sheep: {
-    b: "#6ab820",
-    h: "#98e040",
-    d: "#3a8008",
+    b: "#6aaa3a",
+    h: "#a0cc70",
+    d: "#3a6820",
     frame: true
   },
   wheat: {
-    b: "#c8a820",
-    h: "#e8cc50",
-    d: "#886808",
+    b: "#a07c10",
+    h: "#d8b030",
+    d: "#5a4006",
     frame: true
   },
   ore: {
-    b: "#5a6c7c",
-    h: "#9aaabb",
-    d: "#2a3848",
+    b: "#3c4c58",
+    h: "#7090a8",
+    d: "#181e24",
     frame: true
   },
   desert: {
-    b: "#d8c090",
-    h: "#ece0b8",
-    d: "#a08860",
+    b: "#c8a860",
+    h: "#e8d090",
+    d: "#8a6830",
     frame: false
   },
   sea: {
-    b: "#0e4870",
-    h: "#3a80b0",
-    d: "#052035",
+    b: "#0a3a60",
+    h: "#2a6898",
+    d: "#041828",
     frame: false
   },
   gold: {
-    b: "#d4a010",
-    h: "#f8d840",
-    d: "#8a6008",
+    b: "#a07008",
+    h: "#e8c030",
+    d: "#4a3004",
     frame: true
   },
   fog: {
