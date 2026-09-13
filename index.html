@@ -1663,32 +1663,45 @@ function withSeaFrame(landCoords, ringWidth = 1, extraForcedTypes = {}) {
   };
 }
 
-// Fill the entire bounding box (land + sea between islands + outer border).
-// Use this for Seafarers maps where islands are separated by real navigable ocean.
-function withSeaFill(landCoords, borderWidth = 3, extraForcedTypes = {}) {
+// Fill all hexes reachable within borderWidth steps of any land hex.
+// This produces a proper hex-shaped board (not a rectangle) with sea filling
+// all gaps between islands AND a borderWidth-ring of ocean around the outside.
+function withSeaFill(landCoords, borderWidth = 1, extraForcedTypes = {}) {
   const landSet = new Set(landCoords.map(c => `${c.q},${c.r}`));
-  const qs = landCoords.map(c => c.q);
-  const rs = landCoords.map(c => c.r);
-  const minQ = Math.min(...qs) - borderWidth;
-  const maxQ = Math.max(...qs) + borderWidth;
-  const minR = Math.min(...rs) - borderWidth;
-  const maxR = Math.max(...rs) + borderWidth;
-  const allCoords = [];
+  const HEX_DIRS = [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]];
+  // BFS from all land hexes outward up to borderWidth steps
+  const included = new Map(); // key -> {q,r}
+  landCoords.forEach(c => included.set(`${c.q},${c.r}`, c));
+  let frontier = [...landCoords];
+  for (let step = 0; step < borderWidth; step++) {
+    const next = [];
+    for (const c of frontier) {
+      for (const [dq, dr] of HEX_DIRS) {
+        const nq = c.q + dq,
+          nr = c.r + dr;
+        const key = `${nq},${nr}`;
+        if (!included.has(key)) {
+          included.set(key, {
+            q: nq,
+            r: nr
+          });
+          next.push({
+            q: nq,
+            r: nr
+          });
+        }
+      }
+    }
+    frontier = next;
+  }
+  const allCoords = Array.from(included.values());
   const forcedTypes = {
     ...extraForcedTypes
   };
-  for (let q = minQ; q <= maxQ; q++) {
-    for (let r = minR; r <= maxR; r++) {
-      allCoords.push({
-        q,
-        r
-      });
-      const key = `${q},${r}`;
-      if (!landSet.has(key) && !forcedTypes[key]) {
-        forcedTypes[key] = "sea";
-      }
-    }
-  }
+  allCoords.forEach(c => {
+    const key = `${c.q},${c.r}`;
+    if (!landSet.has(key) && !forcedTypes[key]) forcedTypes[key] = "sea";
+  });
   return {
     coords: allCoords,
     forcedTypes
@@ -1896,7 +1909,7 @@ const MAPS = {
       // Outer land ring (dist=2 from center, 12 hexes). withSeaFill fills
       // the entire bounding box — lagoon interior AND outer border — with sea hexes.
       const outerRing = ringAtollCoords();
-      const filled = withSeaFill(outerRing, 3);
+      const filled = withSeaFill(outerRing, 1);
       return {
         coords: filled.coords,
         size: 48,
@@ -1981,7 +1994,7 @@ const MAPS = {
         r: c.r + 4
       })); // SE
       const land = [...main, ...isleA, ...isleB];
-      const filled = withSeaFill(land, 3);
+      const filled = withSeaFill(land, 1);
       return {
         coords: filled.coords,
         size: 38,
@@ -2015,7 +2028,7 @@ const MAPS = {
         r: c.r + 2
       }));
       const land = [...center, ...north, ...east, ...south, ...west];
-      const filled = withSeaFill(land, 3);
+      const filled = withSeaFill(land, 1);
       return {
         coords: filled.coords,
         size: 34,
@@ -2043,7 +2056,7 @@ const MAPS = {
       // center-east
       ...mkIsle(7, 1) // far east
       ];
-      const filled = withSeaFill(land, 3);
+      const filled = withSeaFill(land, 1);
       return {
         coords: filled.coords,
         size: 36,
@@ -2071,7 +2084,7 @@ const MAPS = {
       // center-east
       ...mkIsle(7, 2) // far east, slightly south
       ];
-      const filled = withSeaFill(land, 3);
+      const filled = withSeaFill(land, 1);
       return {
         coords: filled.coords,
         size: 36,
@@ -2817,6 +2830,7 @@ function edgeTouchesLand(board, edgeId) {
   return edgeTouchesResource(board, edgeId, r => r !== "sea");
 }
 function hasNetworkConnection(board, edgeId, playerId) {
+  // Generic: used for roads — connects to own building OR own road (with no enemy building blocking).
   const edge = board.edges.find(e => e.id === edgeId);
   if (!edge) return false;
   for (const v of [edge.v1, edge.v2]) {
@@ -2824,6 +2838,24 @@ function hasNetworkConnection(board, edgeId, playerId) {
     if (b && b.owner === playerId) return true;
     const others = vertexEdges(board, v).filter(e => e.id !== edgeId);
     if (others.some(e => roadOwnerAt(board, e.id) === playerId) && (!b || b.owner === playerId)) return true;
+  }
+  return false;
+}
+function hasShipNetworkConnection(board, edgeId, playerId) {
+  // Ships can only connect through own settlements/cities OR through adjacent ships.
+  // They CANNOT directly connect to roads — only through a shared settlement/city vertex.
+  const edge = board.edges.find(e => e.id === edgeId);
+  if (!edge) return false;
+  for (const v of [edge.v1, edge.v2]) {
+    const b = buildingAt(board, v);
+    // Own building at this vertex — always OK
+    if (b && b.owner === playerId) return true;
+    // No enemy building blocking — can connect via adjacent own ship
+    if (!b || b.owner === playerId) {
+      const others = vertexEdges(board, v).filter(e => e.id !== edgeId);
+      const adjShip = others.some(e => roadOwnerAt(board, e.id) === playerId && (board.roadTypes || {})[e.id] === "ship");
+      if (adjShip) return true;
+    }
   }
   return false;
 }
@@ -2848,15 +2880,32 @@ function isValidRoadSpot(board, edgeId, playerId) {
 function isValidShipSpot(board, edgeId, playerId) {
   if (roadOwnerAt(board, edgeId)) return false;
   if (!edgeTouchesSea(board, edgeId)) return false;
-  return hasNetworkConnection(board, edgeId, playerId);
+  // Pirate blocks building or moving ships on any edge of its hex
+  const edge = board.edges.find(e => e.id === edgeId);
+  if (edge && board.robberHexId) {
+    const pirateHex = board.hexes.find(h => h.id === board.robberHexId && h.resource === "sea");
+    if (pirateHex && (edge.hexIds || []).includes(pirateHex.id)) return false;
+  }
+  return hasShipNetworkConnection(board, edgeId, playerId);
 }
 function isMovableShip(board, edgeId, playerId) {
   if ((board.roadTypes || {})[edgeId] !== "ship") return false;
   if (roadOwnerAt(board, edgeId) !== playerId) return false;
   const edge = board.edges.find(e => e.id === edgeId);
   if (!edge) return false;
-  if (buildingAt(board, edge.v1) || buildingAt(board, edge.v2)) return false;
-  return true;
+  // A ship in a CLOSED route (settlements/cities at both ends) cannot be moved.
+  if (buildingAt(board, edge.v1) && buildingAt(board, edge.v2)) return false;
+  // Ship must be at the END of a route — i.e. at least one vertex has no other
+  // adjacent own ship (it is the terminal end of the chain).
+  const isTerminal = v => {
+    const adjShips = vertexEdges(board, v).filter(e => e.id !== edgeId && roadOwnerAt(board, e.id) === playerId && (board.roadTypes || {})[e.id] === "ship");
+    return adjShips.length === 0;
+  };
+  // At least one end must be terminal (no continuation of the chain past it)
+  // AND that terminal end must not have a settlement/city closing the route.
+  if (isTerminal(edge.v1) && !buildingAt(board, edge.v1)) return true;
+  if (isTerminal(edge.v2) && !buildingAt(board, edge.v2)) return true;
+  return false;
 }
 function hexResourcesForVertex(board, vertexId) {
   const v = board.vertices.find(x => x.id === vertexId);
@@ -2925,6 +2974,8 @@ function computeVictoryPoints(state, player, viewerId) {
   }
   if (state.longestRoad.playerId === player.id) vp += 2;
   if (state.largestArmy.playerId === player.id) vp += 2;
+  // Seafarers: bonus VP for first settlement on each new island
+  vp += player.islandBonusVP || 0;
   return vp;
 }
 
@@ -8824,6 +8875,7 @@ function setupPlaceSettlement(s, playerId, vid) {
   s.setupAwaitingRoad = true;
   const sp = s.players.find(pl => pl.id === playerId);
   if (sp) sp.settlementsLeft = Math.max(0, (sp.settlementsLeft ?? 5) - 1);
+  recordStartingIsland(s, playerId, vid);
   addLog(s, `${sp?.name || "Someone"} placed a settlement.`, {
     forAll: true,
     sound: "build",
@@ -9107,15 +9159,28 @@ function moveRobber(s, playerId, hexId) {
   s.board.robberHexId = hexId;
   s.robberMoveRequired = null;
   const hex = s.board.hexes.find(h => h.id === hexId);
-  const isPirate = hex.resource === "sea";
+  const isPirate = hex?.resource === "sea";
   const targets = new Set();
-  hex.cornerIds.forEach(vid => {
-    const b = s.board.buildings[vid];
-    if (b && b.owner !== playerId) targets.add(b.owner);
-  });
+  if (isPirate) {
+    // Pirate: steal from players who have ships on edges of this hex — not building owners
+    s.board.edges.forEach(e => {
+      if ((e.hexIds || []).includes(hex.id)) {
+        const owner = roadOwnerAt(s.board, e.id);
+        if (owner && owner !== playerId && (s.board.roadTypes || {})[e.id] === "ship") {
+          targets.add(owner);
+        }
+      }
+    });
+  } else {
+    // Robber: steal from players with buildings on corners of this hex
+    hex.cornerIds.forEach(vid => {
+      const b = s.board.buildings[vid];
+      if (b && b.owner !== playerId) targets.add(b.owner);
+    });
+  }
   const cubaMode = s.options?.communistCuba;
-  const label = cubaMode ? "the Traitor" : isPirate ? "pirate ship" : "marauder";
-  addLog(s, `${playerName(s, playerId)} moved ${label}.`, {
+  const label = cubaMode ? "the Traitor" : isPirate ? "pirate" : "marauder";
+  addLog(s, `${playerName(s, playerId)} moved the ${label}.`, {
     forAll: true,
     sound: "evilLaugh"
   });
@@ -9208,6 +9273,87 @@ function moveShip(s, playerId, fromEdgeId, toEdgeId) {
   checkWinner(s);
   return s;
 }
+function getIslandGroups(board) {
+  // Flood-fill land hexes to find connected island groups.
+  // Returns Map: hexId -> islandId (integer)
+  const landHexes = board.hexes.filter(h => h.resource !== "sea");
+  const hexById = new Map(board.hexes.map(h => [h.id, h]));
+  const islandOf = new Map();
+  let islandId = 0;
+  function neighbors(hex) {
+    // Adjacent hexes sharing an edge — found via shared vertices
+    const myVertices = new Set(hex.cornerIds || []);
+    return board.hexes.filter(h => h.id !== hex.id && (h.cornerIds || []).some(v => myVertices.has(v)));
+  }
+  for (const hex of landHexes) {
+    if (islandOf.has(hex.id)) continue;
+    const queue = [hex];
+    islandOf.set(hex.id, islandId);
+    while (queue.length) {
+      const cur = queue.shift();
+      for (const nb of neighbors(cur)) {
+        if (nb.resource !== "sea" && !islandOf.has(nb.id)) {
+          islandOf.set(nb.id, islandId);
+          queue.push(nb);
+        }
+      }
+    }
+    islandId++;
+  }
+  return islandOf;
+}
+function getVertexIsland(board, vertexId) {
+  // Which island does a vertex belong to? (by adjacent land hexes)
+  const v = board.vertices.find(x => x.id === vertexId);
+  if (!v) return null;
+  const islandGroups = getIslandGroups(board);
+  for (const hexId of v.hexIds || []) {
+    const hex = board.hexes[hexId];
+    if (hex && hex.resource !== "sea" && islandGroups.has(hex.id)) {
+      return islandGroups.get(hex.id);
+    }
+  }
+  return null;
+}
+function getStartingIsland(board, playerId) {
+  // The island a player started on = island of their first-placed settlement.
+  // We store this on the board when the first settlement is placed in setup.
+  return (board.startingIslands || {})[playerId] ?? null;
+}
+function checkNewIslandBonus(s, playerId, vid) {
+  // Only applies on Seafarers maps (has sea hexes)
+  const hasSea = s.board.hexes.some(h => h.resource === "sea");
+  if (!hasSea) return;
+  const islandId = getVertexIsland(s.board, vid);
+  if (islandId === null) return; // settling on coast with no adjacent land? skip
+  const startIsland = getStartingIsland(s.board, playerId);
+  if (startIsland === islandId) return; // same island as start — no bonus
+  // Check if this player has already been rewarded for this island
+  const claimed = s.board.islandClaims || {};
+  const key = `${playerId}:${islandId}`;
+  if (claimed[key]) return;
+  // First time this player settles on this new island — award bonus VP
+  s.board.islandClaims = {
+    ...claimed,
+    [key]: true
+  };
+  const p = s.players.find(pl => pl.id === playerId);
+  if (p) {
+    p.islandBonusVP = (p.islandBonusVP || 0) + 1;
+    addLog(s, `🏝️ ${p.name} settled a new island! +1 bonus VP`, {
+      forAll: true,
+      sound: "build"
+    });
+  }
+}
+function recordStartingIsland(s, playerId, vid) {
+  const islandId = getVertexIsland(s.board, vid);
+  if (islandId === null) return;
+  s.board.startingIslands = s.board.startingIslands || {};
+  if (s.board.startingIslands[playerId] === undefined) {
+    s.board.startingIslands[playerId] = islandId;
+  }
+}
 function buildSettlement(s, playerId, vid) {
   const p = s.players.find(pl => pl.id === playerId);
   if (!canAfford(p.resources, COSTS.settlement)) return s;
@@ -9224,6 +9370,7 @@ function buildSettlement(s, playerId, vid) {
     sound: "build",
     desktopOnly: true
   });
+  checkNewIslandBonus(s, playerId, vid);
   recalcLongestRoad(s);
   checkWinner(s);
   return s;
