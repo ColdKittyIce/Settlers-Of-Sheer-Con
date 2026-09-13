@@ -1665,7 +1665,7 @@ function withSeaFrame(landCoords, ringWidth = 1, extraForcedTypes = {}) {
 
 // Fill the entire bounding box (land + sea between islands + outer border).
 // Use this for Seafarers maps where islands are separated by real navigable ocean.
-function withSeaFill(landCoords, borderWidth = 1, extraForcedTypes = {}) {
+function withSeaFill(landCoords, borderWidth = 3, extraForcedTypes = {}) {
   const landSet = new Set(landCoords.map(c => `${c.q},${c.r}`));
   const qs = landCoords.map(c => c.q);
   const rs = landCoords.map(c => c.r);
@@ -1896,7 +1896,7 @@ const MAPS = {
       // Outer land ring (dist=2 from center, 12 hexes). withSeaFill fills
       // the entire bounding box — lagoon interior AND outer border — with sea hexes.
       const outerRing = ringAtollCoords();
-      const filled = withSeaFill(outerRing, 1);
+      const filled = withSeaFill(outerRing, 3);
       return {
         coords: filled.coords,
         size: 48,
@@ -1958,6 +1958,123 @@ const MAPS = {
       return {
         coords: filled.coords,
         size: 44,
+        desertCount: 2,
+        forcedTypes: filled.forcedTypes
+      };
+    }
+  },
+  headingForNewShores: {
+    name: "Heading for New Shores",
+    desc: "A large main island with two smaller discovery islands offshore — classic Seafarers scenario.",
+    minP: 3,
+    maxP: 6,
+    build: () => {
+      // Main island radius-2 (19 hexes) + two outer islands radius-1 (7 hexes each)
+      // Gap of 2 sea hexes between main and each outer island.
+      const main = hexagonCoords(2);
+      const isleA = hexagonCoords(1).map(c => ({
+        q: c.q + 5,
+        r: c.r - 3
+      })); // NE
+      const isleB = hexagonCoords(1).map(c => ({
+        q: c.q + 3,
+        r: c.r + 4
+      })); // SE
+      const land = [...main, ...isleA, ...isleB];
+      const filled = withSeaFill(land, 3);
+      return {
+        coords: filled.coords,
+        size: 38,
+        desertCount: 2,
+        forcedTypes: filled.forcedTypes
+      };
+    }
+  },
+  wondersOfCatan: {
+    name: "Wonders of Catan",
+    desc: "A central main island surrounded by four smaller islands at each compass point.",
+    minP: 3,
+    maxP: 6,
+    build: () => {
+      // Center radius-2 (19 hexes) + four outer radius-1 islands, gap=2 on all sides.
+      const center = hexagonCoords(2);
+      const north = hexagonCoords(1).map(c => ({
+        q: c.q + 0,
+        r: c.r - 5
+      }));
+      const east = hexagonCoords(1).map(c => ({
+        q: c.q + 5,
+        r: c.r - 2
+      }));
+      const south = hexagonCoords(1).map(c => ({
+        q: c.q + 0,
+        r: c.r + 5
+      }));
+      const west = hexagonCoords(1).map(c => ({
+        q: c.q - 5,
+        r: c.r + 2
+      }));
+      const land = [...center, ...north, ...east, ...south, ...west];
+      const filled = withSeaFill(land, 3);
+      return {
+        coords: filled.coords,
+        size: 34,
+        desertCount: 2,
+        forcedTypes: filled.forcedTypes
+      };
+    }
+  },
+  pirateIslands: {
+    name: "Pirate Islands",
+    desc: "Four small islands in a curved chain — explore and colonize across open ocean.",
+    minP: 3,
+    maxP: 6,
+    build: () => {
+      // Four radius-1 islands arcing NW to NE, each 5 hexes apart (gap=2 sea hexes).
+      const mkIsle = (cq, cr) => hexagonCoords(1).map(c => ({
+        q: c.q + cq,
+        r: c.r + cr
+      }));
+      const land = [...mkIsle(-8, 1),
+      // far west
+      ...mkIsle(-3, -2),
+      // center-west
+      ...mkIsle(2, -2),
+      // center-east
+      ...mkIsle(7, 1) // far east
+      ];
+      const filled = withSeaFill(land, 3);
+      return {
+        coords: filled.coords,
+        size: 36,
+        desertCount: 2,
+        forcedTypes: filled.forcedTypes
+      };
+    }
+  },
+  throughTheDesert: {
+    name: "Through the Desert",
+    desc: "Four islands in a gentle arc across open sea — long voyages between stops.",
+    minP: 3,
+    maxP: 6,
+    build: () => {
+      // Similar arc to Pirate Islands but with a slight vertical curve.
+      const mkIsle = (cq, cr) => hexagonCoords(1).map(c => ({
+        q: c.q + cq,
+        r: c.r + cr
+      }));
+      const land = [...mkIsle(-8, 2),
+      // far west, slightly south
+      ...mkIsle(-3, -1),
+      // center-west
+      ...mkIsle(2, -1),
+      // center-east
+      ...mkIsle(7, 2) // far east, slightly south
+      ];
+      const filled = withSeaFill(land, 3);
+      return {
+        coords: filled.coords,
+        size: 36,
         desertCount: 2,
         forcedTypes: filled.forcedTypes
       };
