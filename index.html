@@ -3187,6 +3187,30 @@ function deleteCustomMap(id) {
 }
 // Inject custom maps into MAPS at load time
 Object.assign(MAPS, loadCustomMaps());
+
+// Hidden built-in maps (stored in localStorage, excluded from map picker)
+function loadHiddenMaps() {
+  try {
+    return new Set(JSON.parse(localStorage.getItem("landfall-hidden-maps") || "[]"));
+  } catch (e) {
+    return new Set();
+  }
+}
+function hideBuiltinMap(id) {
+  try {
+    const hidden = loadHiddenMaps();
+    hidden.add(id);
+    localStorage.setItem("landfall-hidden-maps", JSON.stringify([...hidden]));
+  } catch (e) {}
+}
+function unhideBuiltinMap(id) {
+  try {
+    const hidden = loadHiddenMaps();
+    hidden.delete(id);
+    localStorage.setItem("landfall-hidden-maps", JSON.stringify([...hidden]));
+  } catch (e) {}
+}
+const HIDDEN_MAPS = loadHiddenMaps();
 function autoScaleSize(coords, requestedSize) {
   // Scale down hex size for large boards so they fit the viewport comfortably.
   // Target: board pixel width ~900px. One hex is sqrt(3)*size wide.
@@ -3783,7 +3807,7 @@ function MapPicker({
       flexDirection: "column",
       gap: 6
     }
-  }, Object.entries(MAPS).map(([id, m]) => /*#__PURE__*/React.createElement("div", {
+  }, Object.entries(MAPS).filter(([id]) => !HIDDEN_MAPS.has(id)).map(([id, m]) => /*#__PURE__*/React.createElement("div", {
     key: id
   }, /*#__PURE__*/React.createElement("button", {
     onClick: () => setMapDraft(id),
@@ -7866,6 +7890,124 @@ function DevSandbox({
     }
   }, ["setup", "main", "ended"].map(ph => chipBtn(ph, () => skipToPhase(ph), "#2a2a3a"))))));
 }
+function DevTabManageMaps() {
+  const [hidden, setHidden] = useState(() => loadHiddenMaps());
+  const [, forceUpdate] = useState(0);
+  function toggleHide(id) {
+    if (hidden.has(id)) {
+      unhideBuiltinMap(id);
+      HIDDEN_MAPS.delete(id);
+      setHidden(new Set(HIDDEN_MAPS));
+    } else {
+      hideBuiltinMap(id);
+      HIDDEN_MAPS.add(id);
+      setHidden(new Set(HIDDEN_MAPS));
+    }
+  }
+  function deleteCustom(id) {
+    if (!confirm(`Delete "${MAPS[id]?.name || id}"? This cannot be undone.`)) return;
+    deleteCustomMap(id);
+    forceUpdate(n => n + 1);
+  }
+  const allMaps = Object.entries(MAPS);
+  const builtIn = allMaps.filter(([, m]) => !m.isCustom);
+  const custom = allMaps.filter(([, m]) => m.isCustom);
+  const rowStyle = {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "6px 8px",
+    borderBottom: "1px solid rgba(255,255,255,0.06)",
+    fontSize: 11
+  };
+  const nameStyle = {
+    flex: 1,
+    color: "#f7edd3",
+    fontWeight: 500
+  };
+  const dimStyle = {
+    flex: 1,
+    color: "#a89a7e",
+    fontWeight: 400
+  };
+  const btnStyle = color => ({
+    background: color,
+    color: "#fff",
+    border: "none",
+    borderRadius: 4,
+    padding: "3px 9px",
+    fontSize: 10,
+    cursor: "pointer",
+    fontWeight: 600
+  });
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      display: "flex",
+      flexDirection: "column",
+      gap: 14,
+      fontSize: 11
+    }
+  }, /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      textTransform: "uppercase",
+      letterSpacing: 1,
+      color: "#a89a7e",
+      marginBottom: 6
+    }
+  }, "Custom Maps (", custom.length, ")"), custom.length === 0 && /*#__PURE__*/React.createElement("p", {
+    style: {
+      color: "#5a6a7a"
+    }
+  }, "No custom maps saved yet."), custom.map(([id, m]) => /*#__PURE__*/React.createElement("div", {
+    key: id,
+    style: rowStyle
+  }, /*#__PURE__*/React.createElement("span", {
+    style: nameStyle
+  }, "✏️ ", m.name), /*#__PURE__*/React.createElement("span", {
+    style: {
+      color: "#5a8fc0",
+      fontSize: 10
+    }
+  }, m.desc?.slice(0, 40)), /*#__PURE__*/React.createElement("button", {
+    style: btnStyle("#5a1a1a"),
+    onClick: () => deleteCustom(id)
+  }, "🗑️ Delete")))), /*#__PURE__*/React.createElement("div", null, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      textTransform: "uppercase",
+      letterSpacing: 1,
+      color: "#a89a7e",
+      marginBottom: 4
+    }
+  }, "Built-in Maps — toggle visibility in map picker"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 10,
+      color: "#5a6a7a",
+      marginBottom: 8
+    }
+  }, "Hidden maps still work if a saved game used them — they just won't appear when starting new games."), builtIn.map(([id, m]) => {
+    const isHidden = hidden.has(id);
+    return /*#__PURE__*/React.createElement("div", {
+      key: id,
+      style: {
+        ...rowStyle,
+        opacity: isHidden ? 0.5 : 1
+      }
+    }, /*#__PURE__*/React.createElement("span", {
+      style: nameStyle
+    }, m.name), /*#__PURE__*/React.createElement("span", {
+      style: {
+        color: "#5a8fc0",
+        fontSize: 10,
+        marginRight: "auto"
+      }
+    }, m.minP, "–", m.maxP, "p"), /*#__PURE__*/React.createElement("button", {
+      style: btnStyle(isHidden ? "#1a5a1a" : "#3a2a1a"),
+      onClick: () => toggleHide(id)
+    }, isHidden ? "👁 Show" : "🚫 Hide"));
+  })));
+}
 function DevPanel({
   theme,
   setTheme,
@@ -7944,6 +8086,9 @@ function DevPanel({
   }, {
     id: "maps",
     label: "🗺️ Maps"
+  }, {
+    id: "manage",
+    label: "📋 Manage Maps"
   }, {
     id: "sandbox",
     label: "🧪 Sandbox"
@@ -8026,7 +8171,7 @@ function DevPanel({
     loadFromTheme: loadFromTheme
   }), activeTab === "sounds" && /*#__PURE__*/React.createElement(DevTabSounds, null), activeTab === "music" && /*#__PURE__*/React.createElement(DevTabMusic, null), activeTab === "maps" && /*#__PURE__*/React.createElement(DevTabMaps, {
     onClose: onClose
-  }), activeTab === "sandbox" && /*#__PURE__*/React.createElement(DevSandbox, {
+  }), activeTab === "manage" && /*#__PURE__*/React.createElement(DevTabManageMaps, null), activeTab === "sandbox" && /*#__PURE__*/React.createElement(DevSandbox, {
     state: state,
     mutate: mutate,
     clientId: clientId
