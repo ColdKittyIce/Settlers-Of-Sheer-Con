@@ -116,7 +116,7 @@ input.map-name { width: 100%; background: #192a3e; border: 1px solid #1e3a5f; co
   <div class="panel">
     <h3>🗺️ Load Preset</h3>
     <select id="map-preset">
-      <option value="">— Choose preset —</option>
+      <option value="">— Built-in presets —</option>
       <option value="standard">Standard (19 hexes)</option>
       <option value="extended">Extended (37 hexes)</option>
       <option value="small">Small (7 hexes)</option>
@@ -126,6 +126,11 @@ input.map-name { width: 100%; background: #192a3e; border: 1px solid #1e3a5f; co
       <option value="headingForNewShores">Heading for New Shores</option>
       <option value="wondersOfCatan">Wonders of Catan</option>
     </select>
+    <div id="game-maps-section" style="display:none;margin-top:6px">
+      <select id="game-map-picker" style="width:100%;background:#192a3e;border:1px solid #1e3a5f;color:#fff;border-radius:4px;padding:3px 5px;font-size:10px;">
+        <option value="">— Edit existing game map —</option>
+      </select>
+    </div>
   </div>
 
   <div class="panel">
@@ -509,7 +514,10 @@ function attachEvents(){
     if(tool==='paint'||tool==='del-hex') el.addEventListener('mousemove', onHexDrag);
   });
   svg.querySelectorAll('.pedge').forEach(el=>el.addEventListener('click', onPortEdgeClick));
-  svg.querySelectorAll('.ghost').forEach(el=>el.addEventListener('click', onGhostClick));
+  svg.querySelectorAll('.ghost').forEach(el=>{
+    el.addEventListener('click', onGhostClick);
+    if(tool==='add-hex') el.addEventListener('mousemove', onGhostDrag);
+  });
 }
 
 function onHexClick(e){
@@ -520,8 +528,13 @@ function onHexClick(e){
 }
 function onHexDrag(e){
   if(!isDragging) return;
-  const q=parseInt(e.target.dataset.q), r=parseInt(e.target.dataset.r), h=hexes.get(hk(q,r));
-  if(h&&h.type!==hexType){ h.type=hexType; render(); }
+  const q=parseInt(e.target.dataset.q), r=parseInt(e.target.dataset.r);
+  if(tool==='del-hex'){
+    if(hexes.has(hk(q,r))){ hexes.delete(hk(q,r)); ports=ports.filter(p=>!(p.q===q&&p.r===r)); render(); }
+  } else {
+    const h=hexes.get(hk(q,r));
+    if(h&&h.type!==hexType){ h.type=hexType; render(); }
+  }
 }
 function onHexHover(e){
   const q=e.target.dataset.q, r=e.target.dataset.r, h=hexes.get(hk(parseInt(q),parseInt(r)));
@@ -537,11 +550,16 @@ function onGhostClick(e){
   const q=parseInt(e.target.dataset.gq),r=parseInt(e.target.dataset.gr);
   hexes.set(hk(q,r),{q,r,type:hexType}); render();
 }
+function onGhostDrag(e){
+  if(!isDragging||tool!=='add-hex') return;
+  const q=parseInt(e.target.dataset.gq),r=parseInt(e.target.dataset.gr);
+  if(!hexes.has(hk(q,r))){ hexes.set(hk(q,r),{q,r,type:hexType}); render(); }
+}
 
 // Pan
 svg.addEventListener('mousedown',e=>{
   if(tool==='pan'){ isPanning=true; panStart={x:e.clientX-panX,y:e.clientY-panY}; svg.style.cursor='grabbing'; return; }
-  if(tool==='paint'||tool==='del-hex') isDragging=true;
+  if(tool==='paint'||tool==='del-hex'||tool==='add-hex') isDragging=true;
 });
 window.addEventListener('mousemove',e=>{
   if(isPanning){ panX=e.clientX-panStart.x; panY=e.clientY-panStart.y; render(); }
@@ -698,6 +716,59 @@ function showModal(title,text){
 }
 function copyCode(){ navigator.clipboard.writeText(document.getElementById('code-output').value).then(()=>alert('Copied!')); }
 function closeModal(){ document.getElementById('code-modal').classList.remove('open'); }
+
+// ─────────────────────────────────────────────
+// GAME MAP LOADING (via postMessage from parent)
+// ─────────────────────────────────────────────
+let gameMapsData = {};
+
+function loadGameMap(mapId) {
+  const def = gameMapsData[mapId];
+  if (!def) return;
+  hexes.clear(); ports = [];
+  const forcedTypes = def.forcedTypes || {};
+  def.coords.forEach(c => {
+    const key = `${c.q},${c.r}`;
+    const type = forcedTypes[key] || 'rand';
+    hexes.set(hk(c.q, c.r), { q: c.q, r: c.r, type });
+  });
+  if (def.hexSize) {
+    hexSize = def.hexSize;
+    document.getElementById('hex-size').value = hexSize;
+    document.getElementById('hex-size-val').textContent = Math.round(hexSize);
+  }
+  // Pre-fill map name/desc
+  document.getElementById('map-name').value = def.name || mapId;
+  document.getElementById('map-desc').value = def.desc || '';
+  fitView(); render();
+}
+
+window.addEventListener('message', e => {
+  if (!e.data) return;
+  if (e.data.type === 'landfall-maps-data') {
+    gameMapsData = e.data.maps || {};
+    const picker = document.getElementById('game-map-picker');
+    const section = document.getElementById('game-maps-section');
+    // Populate dropdown
+    picker.innerHTML = '<option value="">— Edit existing game map —</option>';
+    Object.entries(gameMapsData).forEach(([id, def]) => {
+      const opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = def.name;
+      picker.appendChild(opt);
+    });
+    if (Object.keys(gameMapsData).length > 0) section.style.display = '';
+  }
+});
+
+document.getElementById('game-map-picker')?.addEventListener('change', e => {
+  if (e.target.value) { loadGameMap(e.target.value); e.target.value = ''; }
+});
+
+// Request maps from parent if in iframe
+if (window.self !== window.top) {
+  window.parent.postMessage({ type: 'landfall-request-maps' }, '*');
+}
 
 // ─────────────────────────────────────────────
 // INIT

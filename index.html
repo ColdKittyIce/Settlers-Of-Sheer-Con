@@ -7448,16 +7448,55 @@ function DevTabMaps({
 }) {
   const iframeRef = useRef(null);
 
+  // Serialize all built-in maps for the editor
+  function getSerializedMaps() {
+    const result = {};
+    Object.entries(MAPS).forEach(([id, map]) => {
+      if (map.isCustom) return; // skip custom maps (already in localStorage)
+      if (id === "random") return; // skip procedural random
+      try {
+        const built = map.build(4, {});
+        result[id] = {
+          name: map.name,
+          desc: map.desc || "",
+          coords: built.coords,
+          forcedTypes: built.forcedTypes || {},
+          hexSize: built.size || 40,
+          portCount: built.portCount
+        };
+      } catch (e) {/* skip maps that fail to build */}
+    });
+    return result;
+  }
+
+  // Send maps to iframe once it loads
+  function onIframeLoad() {
+    const maps = getSerializedMaps();
+    iframeRef.current?.contentWindow?.postMessage({
+      type: "landfall-maps-data",
+      maps
+    }, "*");
+  }
+
   // Listen for postMessage from the iframe editor
   useEffect(() => {
     function onMsg(e) {
-      if (!e.data || e.data.type !== "landfall-save-map") return;
-      const {
-        id,
-        def
-      } = e.data;
-      saveCustomMap(id, def);
-      alert(`✓ "${def.name}" saved to game! It now appears in the map picker.`);
+      if (!e.data) return;
+      if (e.data.type === "landfall-save-map") {
+        const {
+          id,
+          def
+        } = e.data;
+        saveCustomMap(id, def);
+        alert(`✓ "${def.name}" saved to game! It now appears in the map picker.`);
+      }
+      if (e.data.type === "landfall-request-maps") {
+        const maps = getSerializedMaps();
+        iframeRef.current?.contentWindow?.postMessage({
+          type: "landfall-maps-data",
+          maps
+        }, "*");
+      }
     }
     window.addEventListener("message", onMsg);
     return () => window.removeEventListener("message", onMsg);
@@ -7512,7 +7551,8 @@ function DevTabMaps({
       width: "100%",
       height: "100%"
     },
-    title: "Board Editor"
+    title: "Board Editor",
+    onLoad: onIframeLoad
   }));
 }
 function DevSandbox({
